@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
@@ -7,6 +7,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
+import Autocomplete from '@mui/material/Autocomplete';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import TAGS from '../data/tags';
 import useGeolocation from '../hooks/useGeolocation';
@@ -24,6 +25,14 @@ type Props = {
   onAdd: (newLocation: Location) => void;
 };
 
+type SearchResult = {
+  display_name: string;
+  lat: string;
+  lon: string;
+  class?: string;
+  type?: string;
+};
+
 const AddLocationForm = ({ onAdd }: Props) => {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -33,13 +42,107 @@ const AddLocationForm = ({ onAdd }: Props) => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [rating, setRating] = useState('');
   const [searchError, setSearchError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [options, setOptions] = useState<SearchResult[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const { coords, error: geoError } = useGeolocation();
+
+  const makeViewbox = (lat: number, lon: number, offset = 0.45) => {
+    // Nominatim expects: left,top,right,bottom  => lonMin,latMax,lonMax,latMin
+    const left = lon - offset;
+    const right = lon + offset;
+    const top = lat + offset;
+    const bottom = lat - offset;
+    return `${left},${top},${right},${bottom}`;
+  };
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
   };
+
+  // Fetch top 5-10 choices as user types (debounced)
+  useEffect(() => {
+    const term = searchTerm.trim();
+    setSearchError('');
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    if (term.length < 3) {
+      setOptions([]);
+      setLoadingOptions(false);
+      return;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoadingOptions(true);
+
+    const t = setTimeout(async () => {
+      try {
+        const searchUrl = 'https://nominatim.openstreetmap.org/search';
+        const params = new URLSearchParams({
+          format: 'json',
+          q: term,
+          limit: '10',
+          addressdetails: '1',
+          'accept-language': 'en'
+        });
+        if (coords) {
+          params.append('viewbox', makeViewbox(coords.latitude, coords.longitude));
+          params.append('bounded', '1');
+        }
+
+        let res = await fetch(`${searchUrl}?${params}`, {
+          signal: controller.signal,
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'QuietLocations/1.0'
+          }
+        });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        let data = (await res.json()) as SearchResult[];
+
+        // If no results and we were bounded, retry without bounds as a fallback
+        if (Array.isArray(data) && data.length === 0 && coords) {
+          const params2 = new URLSearchParams({
+            format: 'json',
+            q: term,
+            limit: '10',
+            addressdetails: '1',
+            'accept-language': 'en'
+          });
+          res = await fetch(`${searchUrl}?${params2}`, {
+            signal: controller.signal,
+            headers: {
+              Accept: 'application/json',
+              'User-Agent': 'QuietLocations/1.0'
+            }
+          });
+          if (res.ok) {
+            data = (await res.json()) as SearchResult[];
+          }
+        }
+
+        setOptions(Array.isArray(data) ? data : []);
+      } catch (e) {
+        const err = e as Error & { name?: string };
+        if (err?.name === 'AbortError') return;
+        // Non-fatal: show in helper text
+        setOptions([]);
+        setSearchError('Search failed. Try again.');
+      } finally {
+        setLoadingOptions(false);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [searchTerm, coords]);
 
   const handleGeocodeSearch = async () => {
     if (!address) return;
@@ -53,7 +156,7 @@ const AddLocationForm = ({ onAdd }: Props) => {
       const params = new URLSearchParams({
         format: 'json',
         q: address,
-        limit: '5',
+        limit: '10',
         addressdetails: '1',
         'accept-language': 'en'
       });
@@ -64,20 +167,9 @@ const AddLocationForm = ({ onAdd }: Props) => {
         params.append('lat', coords.latitude.toString());
         params.append('lon', coords.longitude.toString());
         
-        // Set a search radius of ~25km (25000 meters)
-        params.append('radius', '25000');
-
-        // Add geographic bounds (~50km box) as a secondary filter
-        const offset = 0.45; // roughly 50km at most latitudes
-        params.append(
-          'viewbox',
-          `${coords.longitude - offset},${coords.latitude - offset},${
-            coords.longitude + offset
-          },${coords.latitude + offset}`
-        );
-
-        // Add state/area bias for US locations
-        params.append('q', `${address} Iowa`);
+        // Add geographic bounds (~50km box) as a filter
+        params.append('viewbox', makeViewbox(coords.latitude, coords.longitude));
+        params.append('bounded', '1');
       }
 
       const res = await fetch(`${searchUrl}?${params}`, {
@@ -92,20 +184,31 @@ const AddLocationForm = ({ onAdd }: Props) => {
         throw new Error(`Search failed with status: ${res.status}`);
       }
 
-      const results = await res.json();
+      let results = await res.json();
+
+      // Fallback: if bounded search returned nothing, retry unbounded
+      if (Array.isArray(results) && results.length === 0 && coords) {
+        const params2 = new URLSearchParams({
+          format: 'json',
+          q: address,
+          limit: '10',
+          addressdetails: '1',
+          'accept-language': 'en'
+        });
+        const res2 = await fetch(`${searchUrl}?${params2}`, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'QuietLocations/1.0'
+          }
+        });
+        if (res2.ok) {
+          results = await res2.json();
+        }
+      }
 
       if (Array.isArray(results) && results.length > 0) {
-        const firstResult = results[0];
-        if (typeof firstResult.lat === 'string' && typeof firstResult.lon === 'string') {
-          setLat(firstResult.lat);
-          setLng(firstResult.lon);
-          // Update address with the found place name if it's a general search
-          if (address.length < 20 && firstResult.display_name) {
-            setAddress(firstResult.display_name);
-          }
-        } else {
-          throw new Error('Invalid location data received');
-        }
+        // Populate options to let the user choose
+        setOptions(results);
       } else {
         setSearchError('No locations found. Try being more specific.');
       }
@@ -181,14 +284,48 @@ const AddLocationForm = ({ onAdd }: Props) => {
         />
 
         <Stack direction="row" spacing={1} alignItems="flex-start">
-          <TextField
-            label="Address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Street, city, state or place name"
-            helperText={searchError || (coords ? "Using your location to find places nearby" : "")}
-            error={!!searchError}
+          <Autocomplete
             fullWidth
+            freeSolo
+            filterOptions={(x) => x}
+            options={options}
+            loading={loadingOptions}
+            getOptionLabel={(o) => (typeof o === 'string' ? o : o.display_name)}
+            onInputChange={(_, value) => {
+              setAddress(value);
+              setSearchTerm(value);
+              if (!value) {
+                setOptions([]);
+                setLat('');
+                setLng('');
+              }
+            }}
+            onChange={(_, value) => {
+              const opt = value as SearchResult | string | null;
+              if (opt && typeof opt !== 'string') {
+                setAddress(opt.display_name);
+                setLat(opt.lat);
+                setLng(opt.lon);
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Address"
+                placeholder="Street, city, state or place name"
+                helperText={searchError || (coords ? 'Using your location to find places nearby' : '')}
+                error={!!searchError}
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingOptions ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  )
+                }}
+              />
+            )}
           />
           <Button
             variant="contained"

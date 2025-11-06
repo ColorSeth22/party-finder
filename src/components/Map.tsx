@@ -89,7 +89,9 @@ const Map = ({ locations }: Props) => {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {(selectedTags.length ? locations.filter((l) => l.tags.some((t) => selectedTags.includes(t))) : locations).map((loc) => {
+        {(selectedTags.length
+          ? locations.filter((l) => selectedTags.every((t) => l.tags.includes(t)))
+          : locations).map((loc) => {
           const distance = coords
             ? getDistanceKm(coords.latitude, coords.longitude, loc.lat, loc.lng)
             : null;

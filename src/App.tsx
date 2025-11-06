@@ -101,7 +101,7 @@ function App() {
         >
           <Container maxWidth="sm">
             <Typography variant="h4" component="h1" gutterBottom>
-              QuietLocations
+              Quiet Locations
             </Typography>
             <Typography variant="body1" sx={{ mb: 3 }}>
               Find perfect quiet spots near you for studying, working, or simply
