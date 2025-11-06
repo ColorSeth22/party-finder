@@ -1,0 +1,61 @@
+[
+  {
+    "id": "morning-bell",
+    "name": "Morning Bell Coffee Roasters",
+    "lat": 42.0278,
+    "lng": -93.6132,
+    "tags": [
+      "quiet",
+      "local",
+      "wifi"
+    ],
+    "rating": 4.7
+  },
+  {
+    "id": "lockwood",
+    "name": "Lockwood Cafe",
+    "lat": 42.0289,
+    "lng": -93.6171,
+    "tags": [
+      "cozy",
+      "wifi",
+      "outlets"
+    ],
+    "rating": 4.4
+  },
+  {
+    "id": "roni's-mac-bar---ames",
+    "name": "Roni's Mac Bar - Ames",
+    "lat": 42.0225573,
+    "lng": -93.6544597,
+    "tags": [
+      "Quiet",
+      "Reservations",
+      "WiFi"
+    ],
+    "rating": 5
+  },
+  {
+    "id": "simpson-college",
+    "name": "Simpson College",
+    "lat": 41.3662127,
+    "lng": -93.5660541,
+    "tags": [
+      "Quiet",
+      "Reservations"
+    ],
+    "rating": 5
+  },
+  {
+    "id": "starbucks-indianola-mhmpux4k-y38l",
+    "name": "Starbucks Indianola",
+    "lat": 41.3688859,
+    "lng": -93.5565065,
+    "tags": [
+      "Quiet",
+      "WiFi",
+      "Power Outlets"
+    ],
+    "rating": 5
+  }
+]
