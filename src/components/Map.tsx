@@ -15,7 +15,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import FilterPanel from './FilterPanel';
 import SettingsDialog from './SettingsDialog';
 
 type Location = {
@@ -50,12 +49,6 @@ const Map = ({ locations }: Props) => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const handleTagToggle = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
-
   if (loading) {
     return (
       <Box 
@@ -72,10 +65,6 @@ const Map = ({ locations }: Props) => {
 
   return (
     <Box sx={{ position: 'relative', height: '100%', width: '100%' }}>
-      {/* Filters overlay (top-left) */}
-      <Box sx={{ position: 'absolute', top: 16, left: 16, zIndex: 1000 }}>
-        <FilterPanel selectedTags={selectedTags} onTagToggle={handleTagToggle} />
-      </Box>
       <Box 
         sx={{ 
           position: 'absolute', 
