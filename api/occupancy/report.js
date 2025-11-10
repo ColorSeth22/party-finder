@@ -1,5 +1,5 @@
-const { pool } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+import { pool } from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
 
 // Haversine formula to calculate distance between two points in km
 function getDistanceKm(lat1, lon1, lat2, lon2) {
@@ -43,7 +43,7 @@ async function readJsonBody(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       // Require authentication

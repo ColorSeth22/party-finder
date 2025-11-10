@@ -1,4 +1,4 @@
-const { pool } = require('../db');
+import { pool } from '../db.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;
@@ -6,7 +6,7 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   let { id } = (req.query || {});
   
   // Extract id from URL if not provided

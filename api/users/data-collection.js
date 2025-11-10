@@ -1,5 +1,5 @@
-const { pool } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+import { pool } from '../db';
+import { requireAuth } from '../middleware/auth';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;
@@ -28,7 +28,7 @@ async function readJsonBody(req) {
   });
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   try {
     // Require authentication
     const authResult = await requireAuth(req);
