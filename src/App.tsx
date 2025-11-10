@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Analytics } from "@vercel/analytics/next"
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
@@ -160,6 +161,7 @@ function AppContent() {
 
   return (
     <SettingsProvider>
+      <Analytics />
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {view === 'welcome' ? (
         <Box
