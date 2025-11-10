@@ -47,6 +47,7 @@ module.exports = async function handler(req, res) {
       if (authResult.error) {
         return sendJson(res, authResult.status, { error: authResult.error });
       }
+      const { user } = authResult;
 
       const updates = await readJsonBody(req);
       const client = await pool.connect();
@@ -99,6 +100,15 @@ module.exports = async function handler(req, res) {
 
         // Update tags if provided
         if (Array.isArray(updates.tags)) {
+          // Get old tags for activity metadata
+          const oldTagsResult = await client.query(
+            `SELECT t.name FROM Tags t 
+             JOIN LocationTags lt ON t.tag_id = lt.tag_id 
+             WHERE lt.location_id = $1`,
+            [id]
+          );
+          const oldTags = oldTagsResult.rows.map(r => r.name);
+
           // Remove existing tags
           await client.query('DELETE FROM LocationTags WHERE location_id = $1', [id]);
 
@@ -114,6 +124,22 @@ module.exports = async function handler(req, res) {
               [id, tagId]
             );
           }
+
+          // Award points for editing tags (only if tags changed)
+          if (JSON.stringify(oldTags.sort()) !== JSON.stringify(updates.tags.sort())) {
+            await client.query(
+              `SELECT award_points($1, 'edit_tags', $2, $3)`,
+              [user.user_id, id, JSON.stringify({ old_tags: oldTags, new_tags: updates.tags })]
+            );
+          }
+        }
+
+        // Award points for editing location details (if any fields were updated)
+        if (updateFields.length > 0) {
+          await client.query(
+            `SELECT award_points($1, 'edit_location', $2, $3)`,
+            [user.user_id, id, JSON.stringify({ fields_updated: Object.keys(updates).filter(k => k !== 'tags') })]
+          );
         }
 
         // Fetch updated location with tags

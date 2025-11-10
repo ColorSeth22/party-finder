@@ -105,6 +105,12 @@ module.exports = async function handler(req, res) {
           newLocation.tags = [];
         }
 
+        // Award points for adding a location
+        await client.query(
+          `SELECT award_points($1, 'add_location', $2, $3)`,
+          [user.user_id, newLocation.id, JSON.stringify({ location_name: loc.name })]
+        );
+
         await client.query('COMMIT');
         return sendJson(res, 201, newLocation);
       } catch (err) {

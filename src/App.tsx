@@ -9,6 +9,7 @@ import AddLocationForm from './components/AddLocationForm';
 import UpdateLocationForm from './components/UpdateLocationForm';
 import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
+import UserProfile from './components/UserProfile.tsx';
 import { SettingsProvider } from './contexts/settings/provider';
 import { AuthProvider, useAuth } from './contexts/auth';
 // backend base URL: use relative '/api' for both dev and prod (serverless functions)
@@ -24,7 +25,7 @@ type Location = {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'welcome' | 'map' | 'add' | 'update' | 'login' | 'register'>('welcome');
+  const [view, setView] = useState<'welcome' | 'map' | 'add' | 'update' | 'login' | 'register' | 'profile'>('welcome');
   const [locations, setLocations] = useState<Location[]>([]);
   const { token } = useAuth();
 
@@ -201,6 +202,7 @@ function AppContent() {
                 onSwitchToLogin={() => setView('login')}
               />
             )}
+            {view === 'profile' && <UserProfile />}
           </Box>
         </>
       )}
