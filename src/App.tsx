@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
@@ -10,6 +10,7 @@ import UpdateLocationForm from './components/UpdateLocationForm';
 import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
 import UserProfile from './components/UserProfile.tsx';
+import NearbyLocations from './components/NearbyLocations';
 import { SettingsProvider } from './contexts/settings/provider';
 import { AuthProvider, useAuth } from './contexts/auth';
 // backend base URL: use relative '/api' for both dev and prod (serverless functions)
@@ -25,28 +26,56 @@ type Location = {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'welcome' | 'map' | 'add' | 'update' | 'login' | 'register'>('welcome');
+  // Check if user has seen welcome screen before
+  const hasSeenWelcome = localStorage.getItem('hasSeenWelcome') === 'true';
+  const [view, setView] = useState<'welcome' | 'map' | 'add' | 'update' | 'login' | 'register' | 'nearby'>(
+    hasSeenWelcome ? 'map' : 'welcome'
+  );
   const [profileOpen, setProfileOpen] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [locationsRefreshing, setLocationsRefreshing] = useState(false);
+  const [lastLocationsUpdate, setLastLocationsUpdate] = useState<number | null>(null);
   const { token } = useAuth();
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/locations`);
-        if (res.ok) {
-          const data = await res.json();
-          setLocations(data);
-        } else {
-          console.error('Failed to load locations', res.statusText);
-        }
-      } catch (err) {
-        console.error('Error fetching locations', err);
-      }
-    };
+  const handleGetStarted = () => {
+    localStorage.setItem('hasSeenWelcome', 'true');
+    setView('map');
+  };
 
-    load();
+  const isRefreshingRef = useRef(false);
+  const fetchLocations = useCallback(async () => {
+    if (isRefreshingRef.current) return; // prevent overlapping fetches
+    isRefreshingRef.current = true;
+    setLocationsRefreshing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/locations`);
+      if (res.ok) {
+        const data = await res.json();
+        setLocations(data);
+        setLastLocationsUpdate(Date.now());
+      } else {
+        console.error('Failed to load locations', res.statusText);
+      }
+    } catch (err) {
+      console.error('Error fetching locations', err);
+    } finally {
+      setLocationsRefreshing(false);
+      isRefreshingRef.current = false;
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => {
+  fetchLocations();
+  }, [fetchLocations]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchLocations();
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [fetchLocations]);
 
   const handleAddLocation = async (newLoc: Location) => {
     try {
@@ -158,7 +187,7 @@ function AppContent() {
             <Button
               variant="contained"
               color="primary"
-              onClick={() => setView('map')}
+              onClick={handleGetStarted}
               sx={{ borderRadius: 3, px: 3 }}
             >
               Get Started
@@ -193,11 +222,15 @@ function AppContent() {
                 <Map 
                   locations={locations} 
                   onProfileClick={() => setProfileOpen(true)}
+                  onRefreshLocations={fetchLocations}
+                  locationsRefreshing={locationsRefreshing}
+                  lastLocationsUpdate={lastLocationsUpdate}
                 />
               </Box>
             )}
             {view !== 'map' && (
               <Box sx={{ p: 2 }}>
+                {view === 'nearby' && <NearbyLocations locations={locations} />}
                 {view === 'add' && <AddLocationForm onAdd={handleAddLocation} />}
                 {view === 'update' && (
                   <UpdateLocationForm

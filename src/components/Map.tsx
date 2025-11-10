@@ -19,7 +19,10 @@ import PlaceIcon from '@mui/icons-material/Place';
 import SettingsIcon from '@mui/icons-material/Settings';
 import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SyncIcon from '@mui/icons-material/Sync';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import WifiIcon from '@mui/icons-material/Wifi';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
@@ -38,6 +41,9 @@ type Location = {
 type Props = {
   locations: Location[];
   onProfileClick?: () => void;
+  onRefreshLocations?: () => void;
+  locationsRefreshing?: boolean;
+  lastLocationsUpdate?: number | null;
 };
 
 // Component to handle map recenter when user location is available
@@ -53,7 +59,7 @@ const MapUpdater = ({ coords }: { coords: { latitude: number; longitude: number 
   return null;
 };
 
-const Map = ({ locations, onProfileClick }: Props) => {
+const Map = ({ locations, onProfileClick, onRefreshLocations, locationsRefreshing, lastLocationsUpdate }: Props) => {
   const { coords, accuracy, error, loading, refetch } = useGeolocation();
   const { distanceUnit } = useSettings();
   const { isAuthenticated } = useAuth();
@@ -71,6 +77,47 @@ const Map = ({ locations, onProfileClick }: Props) => {
   const handleCloseReportModal = () => {
     setReportModalOpen(false);
     setSelectedLocation(null);
+  };
+
+  // Occupancy state per location popup
+  const [occupancyLoading, setOccupancyLoading] = useState<string | null>(null);
+  const [occupancyData, setOccupancyData] = useState<Record<string, {
+    status: string;
+    level: number | null;
+    occupancy: string | null;
+    last_updated: string | null;
+    report_count: number;
+  }>>({});
+  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+
+  const fetchOccupancy = async (locationId: string) => {
+    // Avoid refetch if we already have data refreshed in last 60s
+    const existing = occupancyData[locationId];
+    if (existing && existing.last_updated) {
+      const age = Date.now() - new Date(existing.last_updated).getTime();
+      if (age < 60_000) return; // < 1 minute old, skip
+    }
+    setOccupancyLoading(locationId);
+    try {
+      const res = await fetch(`${API_BASE}/api/occupancy/${locationId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOccupancyData(prev => ({
+          ...prev,
+          [locationId]: {
+            status: data.current.status,
+            level: data.current.level,
+            occupancy: data.current.occupancy,
+            last_updated: data.current.last_updated,
+            report_count: data.current.report_count
+          }
+        }));
+      }
+    } catch {
+      // swallow for now, could add error state per location
+    } finally {
+      setOccupancyLoading(prev => (prev === locationId ? null : prev));
+    }
   };
 
   if (loading) {
@@ -155,6 +202,36 @@ const Map = ({ locations, onProfileClick }: Props) => {
         </Tooltip>
       </Box>
 
+      {/* Refresh locations (from DB) button - below refresh my location */}
+      <Box 
+        sx={{ 
+          position: 'absolute', 
+          top: 144, 
+          right: 16, 
+          zIndex: 1000, 
+          backgroundColor: 'white',
+          borderRadius: '50%',
+          boxShadow: 2
+        }}
+      >
+        <Tooltip title={
+          locationsRefreshing
+            ? 'Refreshing locations...'
+            : `Refresh locations${lastLocationsUpdate ? ' (last: ' + new Date(lastLocationsUpdate).toLocaleTimeString() + ')' : ''}`
+        }>
+          <span>
+            <IconButton 
+              onClick={() => onRefreshLocations && onRefreshLocations()} 
+              size="large"
+              disabled={!!locationsRefreshing}
+              color={locationsRefreshing ? "default" : "primary"}
+            >
+              <SyncIcon className={locationsRefreshing ? 'rotating' : ''} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Box>
+
       <MapContainer center={defaultCenter} zoom={15} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
@@ -170,12 +247,57 @@ const Map = ({ locations, onProfileClick }: Props) => {
 
           return (
             <Marker key={loc.id} position={[loc.lat, loc.lng]} icon={defaultIcon}>
-              <Popup>
+              <Popup
+                eventHandlers={{
+                  add: () => fetchOccupancy(loc.id)
+                }}
+              >
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <PlaceIcon />
                     <strong>{loc.name}</strong>
                   </Box>
+                  {/* Occupancy status chip */}
+                  {occupancyLoading === loc.id && (
+                    <Chip size="small" label="Loading occupancy..." color="default" />
+                  )}
+                  {occupancyData[loc.id] && occupancyLoading !== loc.id && (
+                    <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      <Chip
+                        size="small"
+                        label={
+                          occupancyData[loc.id].status === 'no_data'
+                            ? 'No recent data'
+                            : `${occupancyData[loc.id].status} · lvl ${occupancyData[loc.id].level}`
+                        }
+                        color={
+                          occupancyData[loc.id].status === 'quiet' ? 'success'
+                            : occupancyData[loc.id].status === 'moderate' ? 'warning'
+                            : occupancyData[loc.id].status === 'busy' ? 'error'
+                            : 'default'
+                        }
+                        variant="outlined"
+                      />
+                      {occupancyData[loc.id].report_count > 0 && (
+                        <Chip
+                          size="small"
+                          label={`${occupancyData[loc.id].report_count} rpt${occupancyData[loc.id].report_count === 1 ? '' : 's'}`}
+                          color="info"
+                          variant="outlined"
+                          icon={<WifiIcon />}
+                        />
+                      )}
+                      {occupancyData[loc.id].last_updated && (
+                        <Chip
+                          size="small"
+                          label={new Date(occupancyData[loc.id].last_updated!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          color="default"
+                          variant="outlined"
+                          icon={<ScheduleIcon />}
+                        />
+                      )}
+                    </Box>
+                  )}
                   {distance !== null && (
                     <Chip
                       size="small"
