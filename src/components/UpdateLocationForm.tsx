@@ -223,11 +223,11 @@ const UpdateLocationForm = ({ events, currentUserId, onUpdateEvent }: Props) => 
 
 						<Stack direction="row" spacing={2}>
 							<FormControlLabel
-								control={<Switch checked={isByob} onChange={(event, checked) => setIsByob(checked)} />}
+								control={<Switch checked={isByob} onChange={(_event, checked) => setIsByob(checked)} />}
 								label="BYOB allowed"
 							/>
 							<FormControlLabel
-								control={<Switch checked={isActive} onChange={(event, checked) => setIsActive(checked)} />}
+								control={<Switch checked={isActive} onChange={(_event, checked) => setIsActive(checked)} />}
 								label="Show on map"
 							/>
 						</Stack>
