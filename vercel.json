@@ -1,14 +1,8 @@
 {
-  "version": 2,
-  "routes": [
-    { "src": "/api/auth/login", "dest": "/api/auth/login.js" },
-    { "src": "/api/auth/register", "dest": "/api/auth/register.js" },
-    { "src": "/api/events", "dest": "/api/events/index.js" },
-    { "src": "/api/events/(.*)", "dest": "/api/events/[id].js" },
-    { "src": "/api/favorites", "dest": "/api/favorites/index.js" },
-    { "src": "/api/checkins", "dest": "/api/checkins/index.js" },
-    { "src": "/api/users/data-collection", "dest": "/api/users/data-collection.js" },
-    { "src": "/api/users/(.*)", "dest": "/api/users/[id].js" }
-  ]
+  "functions": {
+    "api/**.js": {
+      "includeFiles": "api/{auth/login.js,auth/register.js,events/index.js,events/[id].js,favorites/index.js,checkins/index.js,users/[id].js,users/data-collection.js}"
+    }
+  }
 }
 
