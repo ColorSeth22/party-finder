@@ -9,14 +9,14 @@ import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import DialogContentText from '@mui/material/DialogContentText';
 import MapIcon from '@mui/icons-material/Map';
-import AddLocationIcon from '@mui/icons-material/AddLocation';
-import EditIcon from '@mui/icons-material/Edit';
-import ListIcon from '@mui/icons-material/List';
+import CelebrationIcon from '@mui/icons-material/Celebration';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../contexts/auth';
 
-type ViewType = 'welcome' | 'map' | 'add' | 'update' | 'login' | 'register' | 'nearby';
+type ViewType = 'welcome' | 'map' | 'create' | 'manage' | 'login' | 'register' | 'upcoming';
 
 type Props = {
   currentView: ViewType;
@@ -28,7 +28,7 @@ const MainMenu = ({ currentView, setView }: Props) => {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // Derive the navigation value (exclude auth-only views from selection highlighting)
-  const navValue = ['map', 'nearby', 'add', 'update'].includes(currentView)
+  const navValue = ['map', 'upcoming', 'create', 'manage'].includes(currentView)
     ? currentView
     : 'map';
 
@@ -83,25 +83,25 @@ const MainMenu = ({ currentView, setView }: Props) => {
           }}
         />
         <BottomNavigationAction
-          value="nearby"
-          label="Nearby"
-          icon={<ListIcon />}
+          value="upcoming"
+          label="Upcoming"
+          icon={<EventAvailableIcon />}
           sx={{
             '& .MuiBottomNavigationAction-label': { fontSize: '0.75rem' },
           }}
         />
         <BottomNavigationAction
-          value="add"
-          label="Add"
-          icon={<AddLocationIcon />}
+          value="create"
+          label="Host"
+          icon={<CelebrationIcon />}
           sx={{
             '& .MuiBottomNavigationAction-label': { fontSize: '0.75rem' },
           }}
         />
         <BottomNavigationAction
-          value="update"
-          label="Edit"
-          icon={<EditIcon />}
+          value="manage"
+          label="My Events"
+          icon={<PlaylistAddIcon />}
           sx={{
             '& .MuiBottomNavigationAction-label': { fontSize: '0.75rem' },
           }}
@@ -129,7 +129,7 @@ const MainMenu = ({ currentView, setView }: Props) => {
         <DialogTitle>Confirm Logout</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to log out? You'll need to log in again to add locations or report occupancy.
+            Are you sure you want to log out? You'll need to log in again to host parties or check in.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

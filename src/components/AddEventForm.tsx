@@ -8,39 +8,59 @@ import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import Autocomplete from '@mui/material/Autocomplete';
+import MenuItem from '@mui/material/MenuItem';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import TAGS from '../data/tags';
 import useGeolocation from '../hooks/useGeolocation';
 
-type Location = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
+type NewEventPayload = {
+  title: string;
+  description?: string;
+  host_type: 'fraternity' | 'house' | 'club';
+  location_lat: number;
+  location_lng: number;
+  start_time: string;
+  end_time?: string;
   tags: string[];
-  rating: number;
+  theme?: string;
+  music_type?: string;
+  cover_charge?: string;
+  is_byob: boolean;
 };
 
 type Props = {
-  onAdd: (newLocation: Location) => void;
+  onAdd: (payload: NewEventPayload) => void;
 };
 
 type SearchResult = {
   display_name: string;
   lat: string;
   lon: string;
-  class?: string;
-  type?: string;
 };
 
-const AddLocationForm = ({ onAdd }: Props) => {
-  const [name, setName] = useState('');
+const HOST_TYPES: Array<{ label: string; value: 'fraternity' | 'house' | 'club' }> = [
+  { label: 'Fraternity/Greek', value: 'fraternity' },
+  { label: 'House Party', value: 'house' },
+  { label: 'Campus Club', value: 'club' }
+];
+
+const AddEventForm = ({ onAdd }: Props) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [hostType, setHostType] = useState<'fraternity' | 'house' | 'club'>('fraternity');
   const [address, setAddress] = useState('');
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
-  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [theme, setTheme] = useState('');
+  const [musicType, setMusicType] = useState('');
+  const [coverCharge, setCoverCharge] = useState('');
+  const [isByob, setIsByob] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [rating, setRating] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [options, setOptions] = useState<SearchResult[]>([]);
@@ -48,12 +68,11 @@ const AddLocationForm = ({ onAdd }: Props) => {
   const abortRef = useRef<AbortController | null>(null);
   const { coords, error: geoError } = useGeolocation();
 
-  const makeViewbox = (lat: number, lon: number, offset = 0.45) => {
-    // Nominatim expects: left,top,right,bottom  => lonMin,latMax,lonMax,latMin
-    const left = lon - offset;
-    const right = lon + offset;
-    const top = lat + offset;
-    const bottom = lat - offset;
+  const makeViewbox = (latitude: number, longitude: number, offset = 0.45) => {
+    const left = longitude - offset;
+    const right = longitude + offset;
+    const top = latitude + offset;
+    const bottom = latitude - offset;
     return `${left},${top},${right},${bottom}`;
   };
 
@@ -63,24 +82,26 @@ const AddLocationForm = ({ onAdd }: Props) => {
     );
   };
 
-  // Fetch top 5-10 choices as user types (debounced)
   useEffect(() => {
     const term = searchTerm.trim();
     setSearchError('');
+
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+
     if (term.length < 3) {
       setOptions([]);
       setLoadingOptions(false);
       return;
     }
+
     const controller = new AbortController();
     abortRef.current = controller;
     setLoadingOptions(true);
 
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const searchUrl = 'https://nominatim.openstreetmap.org/search';
         const params = new URLSearchParams({
@@ -90,6 +111,7 @@ const AddLocationForm = ({ onAdd }: Props) => {
           addressdetails: '1',
           'accept-language': 'en'
         });
+
         if (coords) {
           params.append('viewbox', makeViewbox(coords.latitude, coords.longitude));
           params.append('bounded', '1');
@@ -99,26 +121,26 @@ const AddLocationForm = ({ onAdd }: Props) => {
           signal: controller.signal,
           headers: {
             Accept: 'application/json',
-            'User-Agent': 'QuietLocations/1.0'
+            'User-Agent': 'CampusPartyFinder/1.0'
           }
         });
+
         if (!res.ok) throw new Error(`Status ${res.status}`);
         let data = (await res.json()) as SearchResult[];
 
-        // If no results and we were bounded, retry without bounds as a fallback
         if (Array.isArray(data) && data.length === 0 && coords) {
-          const params2 = new URLSearchParams({
+          const fallbackParams = new URLSearchParams({
             format: 'json',
             q: term,
             limit: '10',
             addressdetails: '1',
             'accept-language': 'en'
           });
-          res = await fetch(`${searchUrl}?${params2}`, {
+          res = await fetch(`${searchUrl}?${fallbackParams}`, {
             signal: controller.signal,
             headers: {
               Accept: 'application/json',
-              'User-Agent': 'QuietLocations/1.0'
+              'User-Agent': 'CampusPartyFinder/1.0'
             }
           });
           if (res.ok) {
@@ -127,10 +149,8 @@ const AddLocationForm = ({ onAdd }: Props) => {
         }
 
         setOptions(Array.isArray(data) ? data : []);
-      } catch (e) {
-        const err = e as Error & { name?: string };
-        if (err?.name === 'AbortError') return;
-        // Non-fatal: show in helper text
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
         setOptions([]);
         setSearchError('Search failed. Try again.');
       } finally {
@@ -139,7 +159,7 @@ const AddLocationForm = ({ onAdd }: Props) => {
     }, 300);
 
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       controller.abort();
     };
   }, [searchTerm, coords]);
@@ -150,9 +170,7 @@ const AddLocationForm = ({ onAdd }: Props) => {
     setIsGeocoding(true);
 
     try {
-      // Build search URL with viewbox if we have user location
       const searchUrl = 'https://nominatim.openstreetmap.org/search';
-      // Base search parameters
       const params = new URLSearchParams({
         format: 'json',
         q: address,
@@ -161,22 +179,17 @@ const AddLocationForm = ({ onAdd }: Props) => {
         'accept-language': 'en'
       });
 
-      // If we have user coordinates, strongly bias to their area
       if (coords) {
-        // Add user's location as the search center
         params.append('lat', coords.latitude.toString());
         params.append('lon', coords.longitude.toString());
-        
-        // Add geographic bounds (~50km box) as a filter
         params.append('viewbox', makeViewbox(coords.latitude, coords.longitude));
         params.append('bounded', '1');
       }
 
       const res = await fetch(`${searchUrl}?${params}`, {
         headers: {
-          'Accept': 'application/json',
-          // Add a proper User-Agent as requested by Nominatim
-          'User-Agent': 'QuietLocations/1.0'
+          Accept: 'application/json',
+          'User-Agent': 'CampusPartyFinder/1.0'
         }
       });
 
@@ -186,19 +199,18 @@ const AddLocationForm = ({ onAdd }: Props) => {
 
       let results = await res.json();
 
-      // Fallback: if bounded search returned nothing, retry unbounded
       if (Array.isArray(results) && results.length === 0 && coords) {
-        const params2 = new URLSearchParams({
+        const fallbackParams = new URLSearchParams({
           format: 'json',
           q: address,
           limit: '10',
           addressdetails: '1',
           'accept-language': 'en'
         });
-        const res2 = await fetch(`${searchUrl}?${params2}`, {
+        const res2 = await fetch(`${searchUrl}?${fallbackParams}`, {
           headers: {
             Accept: 'application/json',
-            'User-Agent': 'QuietLocations/1.0'
+            'User-Agent': 'CampusPartyFinder/1.0'
           }
         });
         if (res2.ok) {
@@ -207,90 +219,120 @@ const AddLocationForm = ({ onAdd }: Props) => {
       }
 
       if (Array.isArray(results) && results.length > 0) {
-        // Populate options to let the user choose
         setOptions(results);
       } else {
-        setSearchError('No locations found. Try being more specific.');
+        setSearchError('No venues found. Try a more specific search.');
       }
-    } catch (err) {
-      console.error('Geocoding error:', err);
-      setSearchError(
-        err instanceof Error 
-          ? `Search failed: ${err.message}`
-          : 'Failed to find location. Please try again.'
-      );
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setSearchError('Failed to look up that address. Please try again.');
     } finally {
       setIsGeocoding(false);
     }
   };
 
-  const generateUniqueId = (name: string) => {
-    // Create a base from the name (first 20 chars max)
-    const nameBase = name.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .substring(0, 20);
-    
-    // Add timestamp and random string
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 6);
-    
-    return `${nameBase}-${timestamp}-${random}`;
-  };
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      setSearchError('Latitude and longitude are required.');
+      return;
+    }
 
-    const newLocation: Location = {
-      id: generateUniqueId(name),
-      name: name.trim(),
-      lat: parseFloat(lat),
-      lng: parseFloat(lng),
+    if (!startTime) {
+      setSearchError('Start time is required.');
+      return;
+    }
+
+    const payload: NewEventPayload = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      host_type: hostType,
+      location_lat: latitude,
+      location_lng: longitude,
+      start_time: new Date(startTime).toISOString(),
+      end_time: endTime ? new Date(endTime).toISOString() : undefined,
       tags: selectedTags,
-      rating: parseFloat(rating) || 0,
+      theme: theme.trim() || undefined,
+      music_type: musicType.trim() || undefined,
+      cover_charge: coverCharge.trim() || undefined,
+      is_byob: isByob
     };
 
-    onAdd(newLocation);
+    onAdd(payload);
 
-    // Reset form
-    setName('');
+    setTitle('');
+    setDescription('');
+    setHostType('fraternity');
+    setAddress('');
     setLat('');
     setLng('');
-    setAddress('');
+    setStartTime('');
+    setEndTime('');
+    setTheme('');
+    setMusicType('');
+    setCoverCharge('');
+    setIsByob(false);
     setSelectedTags([]);
-    setRating('');
     setSearchError('');
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit} sx={{ p: 2, maxWidth: 480 }}>
+    <Box component="form" onSubmit={handleSubmit} sx={{ p: 2, maxWidth: 640 }}>
       <Typography variant="h6" gutterBottom>
-        Add New Location
+        Host a New Event
       </Typography>
 
       {geoError && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {geoError}. Location search might be less accurate.
+          {geoError}. Location lookup might be less accurate without GPS.
         </Alert>
       )}
 
       <Stack spacing={2}>
         <TextField
-          label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          label="Event title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           required
           fullWidth
+          placeholder="Ex: Sigma Phi Friday Bash"
         />
 
-        <Stack direction="row" spacing={1} alignItems="flex-start">
+        <TextField
+          label="Event description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          fullWidth
+          multiline
+          minRows={3}
+          placeholder="What should people expect?"
+        />
+
+        <TextField
+          select
+          label="Host type"
+          value={hostType}
+          onChange={(e) => setHostType(e.target.value as 'fraternity' | 'house' | 'club')}
+          fullWidth
+        >
+          {HOST_TYPES.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </TextField>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="flex-start">
           <Autocomplete
             fullWidth
             freeSolo
             filterOptions={(x) => x}
             options={options}
             loading={loadingOptions}
-            getOptionLabel={(o) => (typeof o === 'string' ? o : o.display_name)}
+            getOptionLabel={(option) => (typeof option === 'string' ? option : option.display_name)}
             onInputChange={(_, value) => {
               setAddress(value);
               setSearchTerm(value);
@@ -301,19 +343,19 @@ const AddLocationForm = ({ onAdd }: Props) => {
               }
             }}
             onChange={(_, value) => {
-              const opt = value as SearchResult | string | null;
-              if (opt && typeof opt !== 'string') {
-                setAddress(opt.display_name);
-                setLat(opt.lat);
-                setLng(opt.lon);
+              const match = value as SearchResult | string | null;
+              if (match && typeof match !== 'string') {
+                setAddress(match.display_name);
+                setLat(match.lat);
+                setLng(match.lon);
               }
             }}
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Address"
-                placeholder="Street, city, state or place name"
-                helperText={searchError || (coords ? 'Using your location to find places nearby' : '')}
+                label="Venue search"
+                placeholder="Enter an address or campus landmark"
+                helperText={searchError || (coords ? 'Using your current location to bias results' : '')}
                 error={!!searchError}
                 InputProps={{
                   ...params.InputProps,
@@ -332,14 +374,14 @@ const AddLocationForm = ({ onAdd }: Props) => {
             onClick={handleGeocodeSearch}
             disabled={!address || isGeocoding}
             startIcon={isGeocoding ? <CircularProgress size={20} /> : <LocationOnIcon />}
-            sx={{ mt: 1, minWidth: 100 }}
+            sx={{ mt: { xs: 1, sm: 1 } }}
           >
             {isGeocoding ? 'Finding…' : 'Find'}
           </Button>
         </Stack>
 
-        {(lat && lng) && (
-          <Stack direction="row" spacing={2}>
+        {lat && lng && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               label="Latitude"
               value={lat}
@@ -361,9 +403,68 @@ const AddLocationForm = ({ onAdd }: Props) => {
           </Stack>
         )}
 
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          <TextField
+            label="Start time"
+            type="datetime-local"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            required
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="End time"
+            type="datetime-local"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional"
+          />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          <TextField
+            label="Theme"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            fullWidth
+            placeholder="Glow Night, Porch Jam, etc."
+          />
+          <TextField
+            label="Music style"
+            value={musicType}
+            onChange={(e) => setMusicType(e.target.value)}
+            fullWidth
+            placeholder="EDM, Hip-Hop, Indie..."
+          />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+          <TextField
+            label="Cover charge"
+            value={coverCharge}
+            onChange={(e) => setCoverCharge(e.target.value)}
+            fullWidth
+            placeholder="Ex: $5 before 10pm"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isByob}
+                onChange={(e) => setIsByob(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="BYOB friendly"
+            sx={{ flexShrink: 0 }}
+          />
+        </Stack>
+
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Tags
+            Party tags
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {TAGS.map((tag) => (
@@ -379,25 +480,18 @@ const AddLocationForm = ({ onAdd }: Props) => {
           </Stack>
         </Box>
 
-        <TextField
-          label="Rating (1–5)"
-          value={rating}
-          onChange={(e) => setRating(e.target.value)}
-          type="number"
-          inputProps={{ step: '0.1', min: 1, max: 5 }}
-        />
-
-        <Button 
-          type="submit" 
-          variant="contained" 
+        <Button
+          type="submit"
+          variant="contained"
           fullWidth
-          disabled={!lat || !lng || !name}
+          disabled={!title || !lat || !lng || !startTime}
         >
-          Add Location
+          Publish Event
         </Button>
       </Stack>
     </Box>
   );
 };
 
-export default AddLocationForm;
+export type { NewEventPayload };
+export default AddEventForm;

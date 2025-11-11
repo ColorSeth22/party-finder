@@ -3,9 +3,11 @@ import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import MainMenu from './components/MainMenu';
 import Map from './components/Map';
-import AddLocationForm from './components/AddLocationForm';
+import AddEventForm, { type NewEventPayload } from './components/AddEventForm';
 import UpdateLocationForm from './components/UpdateLocationForm';
 import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
@@ -13,148 +15,265 @@ import UserProfile from './components/UserProfile.tsx';
 import NearbyLocations from './components/NearbyLocations';
 import { SettingsProvider } from './contexts/settings/provider';
 import { AuthProvider, useAuth } from './contexts/auth';
-// backend base URL: use relative '/api' for both dev and prod (serverless functions)
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
-type Location = {
+type Event = {
   id: string;
-  name: string;
-  lat: number;
-  lng: number;
+  title: string;
+  description: string | null;
+  host_type: 'fraternity' | 'house' | 'club';
+  location_lat: number;
+  location_lng: number;
+  start_time: string;
+  end_time: string | null;
   tags: string[];
-  rating: number;
+  theme: string | null;
+  music_type: string | null;
+  cover_charge: string | null;
+  is_byob: boolean;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
 };
 
+type View = 'welcome' | 'map' | 'create' | 'manage' | 'login' | 'register' | 'upcoming';
+
 function AppContent() {
-  // Check if user has seen welcome screen before
-  const hasSeenWelcome = localStorage.getItem('hasSeenWelcome') === 'true';
-  const [view, setView] = useState<'welcome' | 'map' | 'add' | 'update' | 'login' | 'register' | 'nearby'>(
-    hasSeenWelcome ? 'map' : 'welcome'
-  );
+  const hasSeenWelcome = localStorage.getItem('hasSeenPartyWelcome') === 'true';
+  const [view, setView] = useState<View>(hasSeenWelcome ? 'map' : 'welcome');
   const [profileOpen, setProfileOpen] = useState(false);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [locationsRefreshing, setLocationsRefreshing] = useState(false);
-  const [lastLocationsUpdate, setLastLocationsUpdate] = useState<number | null>(null);
-  const { token } = useAuth();
+  const [events, setEvents] = useState<Event[]>([]);
+  const [eventsRefreshing, setEventsRefreshing] = useState(false);
+  const [lastEventsUpdate, setLastEventsUpdate] = useState<number | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
+  const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
+  const [pendingCheckIn, setPendingCheckIn] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
+  const { token, user } = useAuth();
+
+  const handleCloseSnackbar = () => setSnackbar(null);
 
   const handleGetStarted = () => {
-    localStorage.setItem('hasSeenWelcome', 'true');
+    localStorage.setItem('hasSeenPartyWelcome', 'true');
     setView('map');
   };
 
   const isRefreshingRef = useRef(false);
-  const fetchLocations = useCallback(async () => {
-    if (isRefreshingRef.current) return; // prevent overlapping fetches
+  const fetchEvents = useCallback(async () => {
+    if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
-    setLocationsRefreshing(true);
+    setEventsRefreshing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/locations`);
-      if (res.ok) {
-        const data = await res.json();
-        setLocations(data);
-        setLastLocationsUpdate(Date.now());
-      } else {
-        console.error('Failed to load locations', res.statusText);
+      const res = await fetch(`${API_BASE}/api/events`);
+      if (!res.ok) {
+        console.error('Failed to load events', await res.text());
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching locations', err);
+      const data = (await res.json()) as Event[];
+      setEvents(data);
+      setLastEventsUpdate(Date.now());
+    } catch (error) {
+      console.error('Error fetching events', error);
     } finally {
-      setLocationsRefreshing(false);
+      setEventsRefreshing(false);
       isRefreshingRef.current = false;
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
-  fetchLocations();
-  }, [fetchLocations]);
+    fetchEvents();
+  }, [fetchEvents]);
 
-  // Auto-refresh every 30 seconds
   useEffect(() => {
     const id = setInterval(() => {
-      fetchLocations();
+      fetchEvents();
     }, 30_000);
     return () => clearInterval(id);
-  }, [fetchLocations]);
+  }, [fetchEvents]);
 
-  const handleAddLocation = async (newLoc: Location) => {
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      if (!token) {
+        setFavoriteIds(new Set());
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/favorites`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+          setFavoriteIds(new Set());
+          return;
+        }
+        if (!res.ok) {
+          console.error('Failed to load favorites', await res.text());
+          return;
+        }
+        const favoriteEvents = (await res.json()) as Event[];
+        setFavoriteIds(new Set(favoriteEvents.map((event) => event.id)));
+      } catch (error) {
+        console.error('Error loading favorites', error);
+      }
+    };
+
+    fetchFavorites();
+  }, [token]);
+
+  const handleAddEvent = async (payload: NewEventPayload) => {
     try {
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
-      const res = await fetch(`${API_BASE}/api/locations`, {
+
+      const res = await fetch(`${API_BASE}/api/events`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(newLoc),
+        body: JSON.stringify(payload)
       });
+
       if (res.status === 401) {
         setView('login');
         return;
       }
-      if (res.ok) {
-        const created = await res.json();
-        setLocations((prev) => [...prev, created]);
-        setView('map');
-      } else {
-        console.error('Failed to add location', await res.text());
+
+      if (!res.ok) {
+        console.error('Failed to create event', await res.text());
+        setSnackbar({ message: 'Could not publish event', severity: 'error' });
+        return;
       }
-    } catch (err) {
-      console.error('Error adding location', err);
+
+      const created = (await res.json()) as Event;
+      setEvents((prev) => [...prev, created]);
+      setView('map');
+      setSnackbar({ message: 'Event published!', severity: 'success' });
+    } catch (error) {
+      console.error('Error creating event', error);
+      setSnackbar({ message: 'Something went wrong while publishing.', severity: 'error' });
     }
   };
 
-  const handleUpdateTags = async (id: string, newTags: string[]) => {
+  const handleUpdateEvent = async (id: string, updates: Partial<Event>) => {
     try {
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      if (!token) {
+        setView('login');
+        return false;
       }
-      const res = await fetch(`${API_BASE}/api/locations/${id}`, {
+
+      const res = await fetch(`${API_BASE}/api/events/${id}`, {
         method: 'PUT',
-        headers,
-        body: JSON.stringify({ tags: newTags }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
       });
+
+      if (res.status === 401) {
+        setView('login');
+        return false;
+      }
+
+      if (!res.ok) {
+        console.error('Failed to update event', await res.text());
+        setSnackbar({ message: 'Update failed.', severity: 'error' });
+        return false;
+      }
+
+      const updated = (await res.json()) as Event;
+      setEvents((prev) => prev.map((event) => (event.id === id ? updated : event)));
+      setSnackbar({ message: 'Event updated.', severity: 'success' });
+      return true;
+    } catch (error) {
+      console.error('Error updating event', error);
+      setSnackbar({ message: 'Unable to update event.', severity: 'error' });
+      return false;
+    }
+  };
+
+  const handleToggleFavorite = async (eventId: string) => {
+    if (!token) {
+      setView('login');
+      return;
+    }
+
+    const shouldFavorite = !favoriteIds.has(eventId);
+    setPendingFavorite(eventId);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/favorites`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ event_id: eventId, favorite: shouldFavorite })
+      });
+
       if (res.status === 401) {
         setView('login');
         return;
       }
-      if (res.ok) {
-        const updated = await res.json();
-        setLocations((prev) => prev.map((loc) => (loc.id === id ? updated : loc)));
-        setView('map');
-      } else {
-        console.error('Failed to update tags', await res.text());
+
+      if (!res.ok) {
+        console.error('Failed to toggle favorite', await res.text());
+        setSnackbar({ message: 'Favorite action failed.', severity: 'error' });
+        return;
       }
-    } catch (err) {
-      console.error('Error updating tags', err);
+
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (shouldFavorite) {
+          next.add(eventId);
+        } else {
+          next.delete(eventId);
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error('Error toggling favorite', error);
+      setSnackbar({ message: 'Favorite action failed.', severity: 'error' });
+    } finally {
+      setPendingFavorite(null);
     }
   };
 
-  const handleDeleteLocation = async (id: string) => {
+  const handleCheckIn = async (eventId: string) => {
+    if (!token) {
+      setView('login');
+      return;
+    }
+
+    setPendingCheckIn(eventId);
     try {
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      const res = await fetch(`${API_BASE}/api/locations/${id}`, {
-        method: 'DELETE',
-        headers,
+      const res = await fetch(`${API_BASE}/api/checkins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ event_id: eventId })
       });
+
       if (res.status === 401) {
         setView('login');
-        return false;
+        return;
       }
-      if (res.ok) {
-        setLocations((prev) => prev.filter((l) => l.id !== id));
-        return true;
-      } else {
-        console.error('Failed to delete location', await res.text());
-        return false;
+
+      if (!res.ok) {
+        console.error('Failed to check in', await res.text());
+        setSnackbar({ message: 'Check-in failed.', severity: 'error' });
+        return;
       }
-    } catch (err) {
-      console.error('Error deleting location', err);
-      return false;
+
+      setSnackbar({ message: 'Checked in! Have fun 🎉', severity: 'success' });
+    } catch (error) {
+      console.error('Error checking in', error);
+      setSnackbar({ message: 'Check-in failed.', severity: 'error' });
+    } finally {
+      setPendingCheckIn(null);
     }
   };
 
@@ -162,107 +281,116 @@ function AppContent() {
     <SettingsProvider>
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {view === 'welcome' ? (
-        <Box
-          component="main"
-          sx={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: 3,
-            bgcolor: 'linear-gradient(135deg, #6b73ff 0%, #000dff 100%)',
-            color: 'black',
-            textAlign: 'center',
-          }}
-        >
-          <Container maxWidth="sm">
-            <Typography variant="h4" component="h1" gutterBottom>
-              Quiet Locations
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Find perfect quiet spots near you for studying, working, or simply
-              enjoying some peace. Browse our curated list of locations or help grow
-              the community by adding your own favorite quiet places.
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleGetStarted}
-              sx={{ borderRadius: 3, px: 3 }}
-            >
-              Get Started
-            </Button>
-          </Container>
-        </Box>
-      ) : (
-        <>
-          <MainMenu 
-            currentView={view} 
-            setView={setView}
-          />
-          <Box 
-            component="main" 
-            sx={{ 
-              flex: 1, 
-              overflow: 'auto',
-              height: 'calc(100vh - 64px)', // Subtract MainMenu height (64px)
-              pb: 0
+          <Box
+            component="main"
+            sx={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 3,
+              bgcolor: 'linear-gradient(135deg, #ff9d6c 0%, #ff4d4d 100%)',
+              color: '#fff',
+              textAlign: 'center'
             }}
           >
-            {view === 'map' && (
-              <Box
-                sx={{
-                  height: { xs: '55vh', sm: '70vh' },
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                  boxShadow: 3,
-                  m: 2,
-                }}
+            <Container maxWidth="sm">
+              <Typography variant="h4" component="h1" gutterBottom>
+                Campus Party Finder
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 3 }}>
+                Discover the hottest parties around campus, see who is going, and share your own events in seconds. Tap into the vibe map and never miss a good time again.
+              </Typography>
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={handleGetStarted}
+                sx={{ borderRadius: 3, px: 3 }}
               >
-                <Map 
-                  locations={locations} 
-                  onProfileClick={() => setProfileOpen(true)}
-                  onRefreshLocations={fetchLocations}
-                  locationsRefreshing={locationsRefreshing}
-                  lastLocationsUpdate={lastLocationsUpdate}
-                />
-              </Box>
-            )}
-            {view !== 'map' && (
-              <Box sx={{ p: 2 }}>
-                {view === 'nearby' && <NearbyLocations locations={locations} />}
-                {view === 'add' && <AddLocationForm onAdd={handleAddLocation} />}
-                {view === 'update' && (
-                  <UpdateLocationForm
-                    locations={locations}
-                    onUpdateTags={handleUpdateTags}
-                    onDelete={handleDeleteLocation}
-                    onDeleted={(id) => setLocations((prev) => prev.filter((l) => l.id !== id))}
-                  />
-                )}
-                {view === 'login' && (
-                  <LoginForm
-                    onSuccess={() => setView('map')}
-                    onSwitchToRegister={() => setView('register')}
-                  />
-                )}
-                {view === 'register' && (
-                  <RegisterForm
-                    onSuccess={() => setView('map')}
-                    onSwitchToLogin={() => setView('login')}
-                  />
-                )}
-              </Box>
-            )}
+                Jump to the Map
+              </Button>
+            </Container>
           </Box>
-          
-          {/* Profile Modal */}
-          <UserProfile 
-            open={profileOpen} 
-            onClose={() => setProfileOpen(false)} 
-          />
-        </>
-      )}
+        ) : (
+          <>
+            <MainMenu currentView={view} setView={setView} />
+            <Box
+              component="main"
+              sx={{
+                flex: 1,
+                overflow: 'auto',
+                height: 'calc(100vh - 64px)',
+                pb: 0
+              }}
+            >
+              {view === 'map' && (
+                <Box
+                  sx={{
+                    height: { xs: '55vh', sm: '70vh' },
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    boxShadow: 3,
+                    m: 2
+                  }}
+                >
+                  <Map
+                    events={events}
+                    favoriteIds={favoriteIds}
+                    onToggleFavorite={handleToggleFavorite}
+                    onCheckIn={handleCheckIn}
+                    pendingFavoriteId={pendingFavorite}
+                    pendingCheckInId={pendingCheckIn}
+                    onProfileClick={() => setProfileOpen(true)}
+                    onRefreshEvents={fetchEvents}
+                    eventsRefreshing={eventsRefreshing}
+                    lastEventsUpdate={lastEventsUpdate}
+                  />
+                </Box>
+              )}
+
+              {view !== 'map' && (
+                <Box sx={{ p: 2 }}>
+                  {view === 'upcoming' && (
+                    <NearbyLocations
+                      events={events}
+                      favoriteIds={favoriteIds}
+                      onToggleFavorite={handleToggleFavorite}
+                    />
+                  )}
+                  {view === 'create' && <AddEventForm onAdd={handleAddEvent} />}
+                  {view === 'manage' && (
+                    <UpdateLocationForm
+                      events={events}
+                      currentUserId={user?.user_id ?? null}
+                      onUpdateEvent={handleUpdateEvent}
+                    />
+                  )}
+                  {view === 'login' && (
+                    <LoginForm onSuccess={() => setView('map')} onSwitchToRegister={() => setView('register')} />
+                  )}
+                  {view === 'register' && (
+                    <RegisterForm onSuccess={() => setView('map')} onSwitchToLogin={() => setView('login')} />
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            <UserProfile open={profileOpen} onClose={() => setProfileOpen(false)} />
+          </>
+        )}
+
+        <Snackbar
+          open={!!snackbar}
+          autoHideDuration={4000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          {snackbar ? (
+            <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+              {snackbar.message}
+            </Alert>
+          ) : undefined}
+        </Snackbar>
       </Box>
     </SettingsProvider>
   );

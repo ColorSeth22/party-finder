@@ -1,167 +1,251 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogTitle from '@mui/material/DialogTitle';
+import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import DeleteIcon from '@mui/icons-material/Delete';
-import SaveIcon from '@mui/icons-material/Save';
+import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Alert from '@mui/material/Alert';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import TAGS from '../data/tags';
 
-type Props = {
-  locations: {
-    id: string;
-    name: string;
-    tags: string[];
-  }[];
-  onUpdateTags: (id: string, newTags: string[]) => void;
-  onDelete?: (id: string) => Promise<boolean>;
-  onDeleted?: (id: string) => void;
+type Event = {
+	id: string;
+	title: string;
+	description: string | null;
+	host_type: 'fraternity' | 'house' | 'club';
+	location_lat: number;
+	location_lng: number;
+	start_time: string;
+	end_time: string | null;
+	tags: string[];
+	theme: string | null;
+	music_type: string | null;
+	cover_charge: string | null;
+	is_byob: boolean;
+	is_active: boolean;
+	created_by: string;
 };
 
-const UpdateLocationForm = ({ locations, onUpdateTags, onDelete, onDeleted }: Props) => {
-  const [selectedId, setSelectedId] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const selectedLocation = locations.find((l) => l.id === selectedId);
+type Props = {
+	events: Event[];
+	currentUserId: string | null;
+	onUpdateEvent: (id: string, updates: Partial<Event>) => Promise<boolean>;
+};
 
-  useEffect(() => {
-    const loc = locations.find((l) => l.id === selectedId);
-    setSelectedTags(loc ? loc.tags : []);
-  }, [selectedId, locations]);
+const UpdateLocationForm = ({ events, currentUserId, onUpdateEvent }: Props) => {
+	const myEvents = useMemo(() => {
+		if (!currentUserId) return [] as Event[];
+		return events.filter((event) => event.created_by === currentUserId);
+	}, [events, currentUserId]);
 
-  const toggleTag = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
+	const [selectedId, setSelectedId] = useState<string>('');
+	const [title, setTitle] = useState('');
+	const [description, setDescription] = useState('');
+	const [selectedTags, setSelectedTags] = useState<string[]>([]);
+	const [theme, setTheme] = useState('');
+	const [musicType, setMusicType] = useState('');
+	const [coverCharge, setCoverCharge] = useState('');
+	const [isByob, setIsByob] = useState(false);
+	const [isActive, setIsActive] = useState(true);
+	const [isSaving, setIsSaving] = useState(false);
 
-  const handleUpdate = () => {
-    if (!selectedId) return;
-    onUpdateTags(selectedId, selectedTags);
-  };
+	const selectedEvent = useMemo(() => myEvents.find((event) => event.id === selectedId) ?? null, [myEvents, selectedId]);
 
-  const handleDelete = async () => {
-    if (!selectedId) return;
-    setIsDeleting(true);
-    try {
-      const success = onDelete ? await onDelete(selectedId) : true;
-      if (success) {
-        if (onDeleted) onDeleted(selectedId);
-      } else {
-        console.error('Failed to delete location');
-      }
-    } catch (err) {
-      console.error('Error deleting location:', err);
-    } finally {
-      setIsDeleting(false);
-      setDeleteDialogOpen(false);
-    }
-  };
+	useEffect(() => {
+		if (!selectedEvent) {
+			setTitle('');
+			setDescription('');
+			setSelectedTags([]);
+			setTheme('');
+			setMusicType('');
+			setCoverCharge('');
+			setIsByob(false);
+			setIsActive(true);
+			return;
+		}
 
-  return (
-    <Box sx={{ p: 2, maxWidth: 480 }}>
-      <Typography variant="h6" gutterBottom>
-        Update or Delete Location
-      </Typography>
+		setTitle(selectedEvent.title ?? '');
+		setDescription(selectedEvent.description ?? '');
+		setSelectedTags(selectedEvent.tags ?? []);
+		setTheme(selectedEvent.theme ?? '');
+		setMusicType(selectedEvent.music_type ?? '');
+		setCoverCharge(selectedEvent.cover_charge ?? '');
+		setIsByob(selectedEvent.is_byob);
+		setIsActive(selectedEvent.is_active);
+	}, [selectedEvent]);
 
-      <Stack spacing={2}>
-        <Select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value as string)}
-          displayEmpty
-        >
-          <MenuItem value="">Select a location</MenuItem>
-          {locations.map((loc) => (
-            <MenuItem key={loc.id} value={loc.id}>
-              {loc.name}
-            </MenuItem>
-          ))}
-        </Select>
+	const toggleTag = (tag: string) => {
+		setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+	};
 
-        {selectedId && (
-          <>
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Tags
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                {TAGS.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    clickable
-                    color={selectedTags.includes(tag) ? 'primary' : 'default'}
-                    onClick={() => toggleTag(tag)}
-                    sx={{ m: 0.5 }}
-                  />
-                ))}
-              </Stack>
-            </Box>
+	const hasChanges = useMemo(() => {
+		if (!selectedEvent) return false;
+		return (
+			title !== (selectedEvent.title ?? '') ||
+			description !== (selectedEvent.description ?? '') ||
+			theme !== (selectedEvent.theme ?? '') ||
+			musicType !== (selectedEvent.music_type ?? '') ||
+			coverCharge !== (selectedEvent.cover_charge ?? '') ||
+			isByob !== selectedEvent.is_byob ||
+			isActive !== selectedEvent.is_active ||
+			selectedTags.sort().join('|') !== (selectedEvent.tags ?? []).slice().sort().join('|')
+		);
+	}, [selectedEvent, title, description, theme, musicType, coverCharge, isByob, isActive, selectedTags]);
 
-            <Stack direction="row" spacing={2} justifyContent="space-between">
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleUpdate}
-                startIcon={<SaveIcon />}
-                sx={{ flex: 1 }}
-              >
-                Update Tags
-              </Button>
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => setDeleteDialogOpen(true)}
-                startIcon={<DeleteIcon />}
-              >
-                Delete
-              </Button>
-            </Stack>
-          </>
-        )}
-      </Stack>
+	const handleSave = async () => {
+		if (!selectedEvent || !hasChanges) return;
+		setIsSaving(true);
+		try {
+			const updates: Partial<Event> = {
+				title,
+				description: description || null,
+				tags: selectedTags,
+				theme: theme || null,
+				music_type: musicType || null,
+				cover_charge: coverCharge || null,
+				is_byob: isByob,
+				is_active: isActive
+			};
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        aria-labelledby="delete-dialog-title"
-      >
-        <DialogTitle id="delete-dialog-title">Delete Location?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete "{selectedLocation?.name}"? This action cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setDeleteDialogOpen(false)}
-            color="primary"
-            disabled={isDeleting}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDelete}
-            color="error"
-            disabled={isDeleting}
-            autoFocus
-          >
-            {isDeleting ? 'Deleting...' : 'Delete'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
+			await onUpdateEvent(selectedEvent.id, updates);
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	if (!currentUserId) {
+		return <Alert severity="info">Sign in to manage the events you are hosting.</Alert>;
+	}
+
+	if (!myEvents.length) {
+		return <Alert severity="info">You have not published any events yet. Create one to start managing it here.</Alert>;
+	}
+
+	return (
+		<Box sx={{ p: 2, maxWidth: 640 }}>
+			<Stack spacing={3}>
+				<Box>
+					<Typography variant="h5" sx={{ fontWeight: 600 }} gutterBottom>
+						Manage My Events
+					</Typography>
+					<Typography variant="body2" color="text.secondary">
+						Update party details, tags, and visibility. Changes apply instantly for everyone viewing the map.
+					</Typography>
+				</Box>
+
+				<Select
+					value={selectedId}
+					onChange={(event) => setSelectedId(event.target.value as string)}
+					displayEmpty
+				>
+					<MenuItem value="">Select an event to edit</MenuItem>
+					{myEvents.map((event) => (
+						<MenuItem key={event.id} value={event.id}>
+							{event.title}
+						</MenuItem>
+					))}
+				</Select>
+
+				{selectedEvent && (
+					<Stack spacing={3}>
+						<Box>
+							<Typography variant="subtitle2" color="text.secondary" gutterBottom>
+								Scheduling
+							</Typography>
+							<Typography variant="body2">
+								Starts {new Date(selectedEvent.start_time).toLocaleString()}<br />
+								{selectedEvent.end_time ? `Ends ${new Date(selectedEvent.end_time).toLocaleString()}` : 'End time not set'}
+							</Typography>
+						</Box>
+
+						<Divider />
+
+						<TextField
+							label="Event title"
+							value={title}
+							onChange={(event) => setTitle(event.target.value)}
+							fullWidth
+						/>
+
+						<TextField
+							label="Description"
+							value={description}
+							onChange={(event) => setDescription(event.target.value)}
+							fullWidth
+							multiline
+							minRows={3}
+						/>
+
+						<Box>
+							<Typography variant="subtitle2" color="text.secondary" gutterBottom>
+								Tags
+							</Typography>
+							<Stack direction="row" spacing={1} flexWrap="wrap">
+								{TAGS.map((tag) => (
+									<Chip
+										key={tag}
+										label={tag}
+										clickable
+										color={selectedTags.includes(tag) ? 'primary' : 'default'}
+										onClick={() => toggleTag(tag)}
+										sx={{ mb: 1 }}
+									/>
+								))}
+							</Stack>
+						</Box>
+
+						<Stack spacing={2} direction={{ xs: 'column', sm: 'row' }}>
+							<TextField
+								label="Theme"
+								value={theme}
+								onChange={(event) => setTheme(event.target.value)}
+								fullWidth
+							/>
+							<TextField
+								label="Music"
+								value={musicType}
+								onChange={(event) => setMusicType(event.target.value)}
+								fullWidth
+							/>
+						</Stack>
+
+						<TextField
+							label="Cover charge"
+							value={coverCharge}
+							onChange={(event) => setCoverCharge(event.target.value)}
+							fullWidth
+						/>
+
+						<Stack direction="row" spacing={2}>
+							<FormControlLabel
+								control={<Switch checked={isByob} onChange={(event, checked) => setIsByob(checked)} />}
+								label="BYOB allowed"
+							/>
+							<FormControlLabel
+								control={<Switch checked={isActive} onChange={(event, checked) => setIsActive(checked)} />}
+								label="Show on map"
+							/>
+						</Stack>
+
+						<Stack direction="row" spacing={2} justifyContent="flex-end">
+							<Button
+								variant="contained"
+								onClick={handleSave}
+								disabled={!hasChanges || isSaving}
+							>
+								{isSaving ? 'Saving...' : 'Save changes'}
+							</Button>
+						</Stack>
+					</Stack>
+				)}
+			</Stack>
+		</Box>
+	);
 };
 
 export default UpdateLocationForm;

@@ -1,444 +1,262 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
 import Card from '@mui/material/Card';
-import Chip from '@mui/material/Chip';
-import CircularProgress from '@mui/material/CircularProgress';
-import Alert from '@mui/material/Alert';
-import Stack from '@mui/material/Stack';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
+import CardContent from '@mui/material/CardContent';
+import CardActions from '@mui/material/CardActions';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
+import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
+import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
-import CloseIcon from '@mui/icons-material/Close';
-import PlaceIcon from '@mui/icons-material/Place';
-import PersonIcon from '@mui/icons-material/Person';
-import PeopleIcon from '@mui/icons-material/People';
-import GroupsIcon from '@mui/icons-material/Groups';
-import Diversity3Icon from '@mui/icons-material/Diversity3';
-import CrowdIcon from '@mui/icons-material/Group';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import DirectionsIcon from '@mui/icons-material/Directions';
-import AssessmentIcon from '@mui/icons-material/Assessment';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
+import CelebrationIcon from '@mui/icons-material/Celebration';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import LocalBarIcon from '@mui/icons-material/LocalBar';
+import PlaceIcon from '@mui/icons-material/Place';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import useGeolocation from '../hooks/useGeolocation';
 import { getDistanceKm, formatDistance } from '../utils/distance';
 import { useSettings } from '../contexts/settings/hooks';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
-
-type Location = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  tags: string[];
-};
-
-type LocationWithDistance = Location & {
-  distance: number;
-  occupancy?: {
-    status: string;
-    level: number | null;
-    occupancy: string | null;
-    last_updated: string | null;
-    report_count: number;
-  };
+type Event = {
+	id: string;
+	title: string;
+	description: string | null;
+	host_type: 'fraternity' | 'house' | 'club';
+	location_lat: number;
+	location_lng: number;
+	start_time: string;
+	end_time: string | null;
+	tags: string[] | null;
+	theme: string | null;
+	music_type: string | null;
+	cover_charge: string | null;
+	is_byob: boolean;
+	is_active: boolean;
 };
 
 type Props = {
-  locations: Location[];
+	events: Event[];
+	favoriteIds: Set<string>;
+	onToggleFavorite: (eventId: string) => void | Promise<void>;
+	pendingFavoriteId?: string | null;
+	onCheckIn?: (eventId: string) => void | Promise<void>;
+	pendingCheckInId?: string | null;
 };
 
-const occupancyIcons: Record<number, React.ReactElement> = {
-  1: <PersonIcon fontSize="small" />,
-  2: <PeopleIcon fontSize="small" />,
-  3: <GroupsIcon fontSize="small" />,
-  4: <Diversity3Icon fontSize="small" />,
-  5: <CrowdIcon fontSize="small" />,
+type EventWithDistance = Event & {
+	distanceKm: number | null;
 };
 
-const NearbyLocations = ({ locations }: Props) => {
-  const { coords, loading: geoLoading, error: geoError, refetch } = useGeolocation();
-  const { distanceUnit } = useSettings();
-  const [locationsWithData, setLocationsWithData] = useState<LocationWithDistance[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<LocationWithDistance | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+const HOST_LABELS: Record<Event['host_type'], string> = {
+	fraternity: 'Fraternity/Greek',
+	house: 'House Party',
+	club: 'Campus Club'
+};
 
-  const handleLocationClick = (location: LocationWithDistance) => {
-    setSelectedLocation(location);
-    setModalOpen(true);
-  };
+const NearbyLocations = ({
+	events,
+	favoriteIds,
+	onToggleFavorite,
+	pendingFavoriteId,
+	onCheckIn,
+	pendingCheckInId
+}: Props) => {
+	const { coords, loading: locationLoading, error: locationError, refetch } = useGeolocation();
+	const { distanceUnit } = useSettings();
+	const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const handleCloseModal = () => {
-    setModalOpen(false);
-    setSelectedLocation(null);
-  };
+	const decoratedEvents = useMemo<EventWithDistance[]>(() => {
+		const now = Date.now();
+		const endThreshold = now - 60 * 60 * 1000; // show events ending within the last hour
 
-  const handleGetDirections = () => {
-    if (selectedLocation) {
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedLocation.lat},${selectedLocation.lng}`;
-      window.open(url, '_blank');
-    }
-  };
+		const upcoming = events.filter((event) => {
+			if (!event.is_active) return false;
+			const endsAt = event.end_time ? new Date(event.end_time).getTime() : new Date(event.start_time).getTime();
+			return endsAt >= endThreshold;
+		});
 
-  useEffect(() => {
-    if (!coords) return;
+		return upcoming
+			.map((event) => {
+				const distanceKm = coords
+					? getDistanceKm(coords.latitude, coords.longitude, event.location_lat, event.location_lng)
+					: null;
+				return { ...event, distanceKm };
+			})
+			.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+	}, [events, coords]);
 
-    const fetchOccupancyData = async () => {
-      setLoading(true);
-      
-      // Calculate distances and filter to nearby (within 50km)
-      const nearby = locations
-        .map(loc => ({
-          ...loc,
-          distance: getDistanceKm(coords.latitude, coords.longitude, loc.lat, loc.lng)
-        }))
-        .filter(loc => loc.distance <= 50); // Only show locations within 50km
+	const renderDistance = (distanceKm: number | null) => {
+		if (distanceKm == null) return null;
+		return (
+			<Chip
+				size="small"
+				color="primary"
+				variant="outlined"
+				icon={<PlaceIcon fontSize="small" />}
+				label={formatDistance(distanceKm, distanceUnit)}
+			/>
+		);
+	};
 
-      // Fetch occupancy data for all nearby locations
-      const withOccupancy: LocationWithDistance[] = await Promise.all(
-        nearby.map(async (loc): Promise<LocationWithDistance> => {
-          try {
-            const res = await fetch(`${API_BASE}/api/occupancy/${loc.id}`);
-            if (res.ok) {
-              const data = await res.json();
-              return {
-                ...loc,
-                occupancy: {
-                  status: data.current.status,
-                  level: data.current.level,
-                  occupancy: data.current.occupancy,
-                  last_updated: data.current.last_updated,
-                  report_count: data.current.report_count
-                }
-              };
-            }
-          } catch {
-            // If fetch fails, return without occupancy data
-          }
-          return loc;
-        })
-      );
+	if (!events.length) {
+		return <Alert severity="info">No events have been posted yet. Be the first to host one!</Alert>;
+	}
 
-      // Sort by occupancy level (quietest first), then by distance
-      const sorted = withOccupancy.sort((a, b) => {
-        // Locations with no data go to the end
-        if (!a.occupancy && !b.occupancy) return a.distance - b.distance;
-        if (!a.occupancy) return 1;
-        if (!b.occupancy) return -1;
+	if (locationLoading && !coords) {
+		return (
+			<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+				<Stack spacing={2} alignItems="center">
+					<EventAvailableIcon color="primary" fontSize="large" />
+					<Typography>Finding parties near you...</Typography>
+				</Stack>
+			</Box>
+		);
+	}
 
-        // If both have no current occupancy data, sort by distance
-        if (a.occupancy.status === 'no_data' && b.occupancy.status === 'no_data') {
-          return a.distance - b.distance;
-        }
-        if (a.occupancy.status === 'no_data') return 1;
-        if (b.occupancy.status === 'no_data') return -1;
+	const listContent = (
+		<Stack spacing={2}>
+			{decoratedEvents.map((event) => {
+				const isFavorite = favoriteIds.has(event.id);
+				const startAt = new Date(event.start_time);
+				const endAt = event.end_time ? new Date(event.end_time) : null;
+				const eventTags = event.tags ?? [];
 
-        // Sort by occupancy level (lower = quieter = first)
-        if (a.occupancy.level !== null && b.occupancy.level !== null) {
-          if (a.occupancy.level !== b.occupancy.level) {
-            return a.occupancy.level - b.occupancy.level;
-          }
-        }
+				return (
+					<Card key={event.id} variant="outlined">
+						<CardContent>
+							<Stack spacing={1.5}>
+								<Stack direction="row" spacing={1} alignItems="center">
+									<Typography variant="h6" sx={{ fontWeight: 600 }}>
+										{event.title}
+									</Typography>
+									{renderDistance(event.distanceKm)}
+								</Stack>
 
-        // If same level, sort by distance
-        return a.distance - b.distance;
-      });
+								<Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+									<Chip size="small" icon={<CelebrationIcon fontSize="small" />} label={HOST_LABELS[event.host_type]} />
+									<Chip
+										size="small"
+										icon={<ScheduleIcon fontSize="small" />}
+										label={startAt.toLocaleString([], {
+											month: 'short',
+											day: 'numeric',
+											hour: 'numeric',
+											minute: '2-digit'
+										})}
+									/>
+									{endAt && (
+										<Chip
+											size="small"
+											variant="outlined"
+											icon={<ScheduleIcon fontSize="small" />}
+											label={`Ends ${endAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}
+										/>
+									)}
+									{event.theme && (
+										<Chip size="small" variant="outlined" icon={<CelebrationIcon fontSize="small" />} label={`Theme: ${event.theme}`} />
+									)}
+									{event.music_type && (
+										<Chip size="small" variant="outlined" icon={<MusicNoteIcon fontSize="small" />} label={event.music_type} />
+									)}
+									{event.cover_charge && (
+										<Chip size="small" variant="outlined" icon={<LocalBarIcon fontSize="small" />} label={event.cover_charge} />
+									)}
+									{event.is_byob && <Chip size="small" color="secondary" variant="outlined" label="BYOB" />}
+								</Stack>
 
-      setLocationsWithData(sorted);
-      setLoading(false);
-    };
+								{event.description && (
+									<Typography variant="body2" color="text.secondary">
+										{expandedId === event.id
+											? event.description
+											: `${event.description.slice(0, 140)}${event.description.length > 140 ? '…' : ''}`}
+									</Typography>
+								)}
 
-    fetchOccupancyData();
-  }, [coords, locations]);
+								{eventTags.length > 0 && (
+									<Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+										{eventTags.map((tag) => (
+											<Chip key={tag} size="small" variant="outlined" label={tag} />
+										))}
+									</Stack>
+								)}
+							</Stack>
+						</CardContent>
+						<Divider />
+						<CardActions sx={{ justifyContent: 'space-between', px: 2, py: 1.5 }}>
+							{event.description && event.description.length > 140 && (
+								<Button size="small" onClick={() => setExpandedId((prev) => (prev === event.id ? null : event.id))}>
+									{expandedId === event.id ? 'Show less' : 'Read more'}
+								</Button>
+							)}
 
-  if (geoLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+							<Stack direction="row" spacing={1} alignItems="center">
+								{onCheckIn && (
+									<Button
+										size="small"
+										variant="outlined"
+										color="primary"
+										startIcon={<CheckCircleIcon />}
+										onClick={() => onCheckIn(event.id)}
+										disabled={pendingCheckInId === event.id}
+									>
+										{pendingCheckInId === event.id ? 'Checking in...' : 'Check in'}
+									</Button>
+								)}
+								<Tooltip title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
+									<span>
+										<IconButton
+											color={isFavorite ? 'secondary' : 'default'}
+											onClick={() => onToggleFavorite(event.id)}
+											disabled={pendingFavoriteId === event.id}
+										>
+											{isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+										</IconButton>
+									</span>
+								</Tooltip>
+							</Stack>
+						</CardActions>
+					</Card>
+				);
+			})}
+		</Stack>
+	);
 
-  if (geoError || !coords) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="warning" action={
-          <button onClick={() => refetch()}>Retry</button>
-        }>
-          Unable to get your location. Please enable location services to see nearby places.
-        </Alert>
-      </Box>
-    );
-  }
+	if (locationError && !coords) {
+		return (
+			<Alert
+				severity="warning"
+				action={
+					<Button color="inherit" size="small" onClick={() => refetch()}>
+						Retry
+					</Button>
+				}
+			>
+				We could not access your location. Enable location services to see distances to each party.
+			</Alert>
+		);
+	}
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Loading nearby locations...</Typography>
-      </Box>
-    );
-  }
+	return (
+		<Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+			<Box>
+				<Typography variant="h5" sx={{ fontWeight: 600 }}>
+					Upcoming Parties
+				</Typography>
+				<Typography variant="body2" color="text.secondary">
+					Curated list of events happening soon. Tap a card to explore the vibe.
+				</Typography>
+			</Box>
 
-  if (locationsWithData.length === 0) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="info">
-          No locations found within 50km of your current location.
-        </Alert>
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-        Nearby Quiet Spots
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Sorted from quietest to busiest based on recent reports
-      </Typography>
-
-      <List sx={{ width: '100%' }}>
-        {locationsWithData.map((loc) => (
-          <Card key={loc.id} sx={{ mb: 2 }}>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => handleLocationClick(loc)}>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                      <PlaceIcon fontSize="small" />
-                      <Typography variant="h6" component="span">
-                        {loc.name}
-                      </Typography>
-                      <Chip
-                        size="small"
-                        label={formatDistance(loc.distance, distanceUnit)}
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </Box>
-                  }
-                  secondary={
-                    <Box sx={{ mt: 1 }}>
-                      {/* Occupancy status */}
-                      {loc.occupancy ? (
-                        <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap' }}>
-                          <Chip
-                            size="small"
-                            icon={loc.occupancy.level !== null && loc.occupancy.level >= 1 && loc.occupancy.level <= 5 ? occupancyIcons[loc.occupancy.level] : <HelpOutlineIcon fontSize="small" />}
-                            label={
-                              loc.occupancy.status === 'no_data'
-                                ? 'No recent data'
-                                : `${loc.occupancy.status.charAt(0).toUpperCase() + loc.occupancy.status.slice(1)} (Level ${loc.occupancy.level}/5)`
-                            }
-                            color={
-                              loc.occupancy.status === 'quiet' ? 'success'
-                                : loc.occupancy.status === 'moderate' ? 'warning'
-                                : loc.occupancy.status === 'busy' ? 'error'
-                                : 'default'
-                            }
-                          />
-                          {loc.occupancy.report_count > 0 && (
-                            <Chip
-                              size="small"
-                              label={`${loc.occupancy.report_count} recent report${loc.occupancy.report_count === 1 ? '' : 's'}`}
-                              variant="outlined"
-                            />
-                          )}
-                          {loc.occupancy.last_updated && (
-                            <Chip
-                              size="small"
-                              label={`Updated ${new Date(loc.occupancy.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-                              variant="outlined"
-                            />
-                          )}
-                        </Stack>
-                      ) : (
-                        <Chip
-                          size="small"
-                          icon={<HelpOutlineIcon fontSize="small" />}
-                          label="No occupancy data"
-                          variant="outlined"
-                          sx={{ mb: 1 }}
-                        />
-                      )}
-
-                      {/* Tags */}
-                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                        {loc.tags.map((tag) => (
-                          <Chip
-                            key={tag}
-                            label={tag}
-                            size="small"
-                            variant="outlined"
-                          />
-                        ))}
-                      </Stack>
-                    </Box>
-                  }
-                />
-              </ListItemButton>
-            </ListItem>
-          </Card>
-        ))}
-      </List>
-
-      {/* Location Detail Modal */}
-      <Dialog
-        open={modalOpen}
-        onClose={handleCloseModal}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PlaceIcon />
-              {selectedLocation?.name}
-            </Box>
-            <IconButton onClick={handleCloseModal} size="small">
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {selectedLocation && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {/* Distance */}
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Distance
-                </Typography>
-                <Chip
-                  size="medium"
-                  label={formatDistance(selectedLocation.distance, distanceUnit)}
-                  color="primary"
-                  icon={<PlaceIcon />}
-                />
-              </Box>
-
-              <Divider />
-
-              {/* Occupancy Information */}
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Current Occupancy
-                </Typography>
-                {selectedLocation.occupancy ? (
-                  <Stack spacing={1}>
-                    <Chip
-                      size="medium"
-                      icon={
-                        selectedLocation.occupancy.level !== null &&
-                        selectedLocation.occupancy.level >= 1 &&
-                        selectedLocation.occupancy.level <= 5
-                          ? occupancyIcons[selectedLocation.occupancy.level]
-                          : <HelpOutlineIcon />
-                      }
-                      label={
-                        selectedLocation.occupancy.status === 'no_data'
-                          ? 'No recent data available'
-                          : `${selectedLocation.occupancy.status.charAt(0).toUpperCase() + selectedLocation.occupancy.status.slice(1)} - Level ${selectedLocation.occupancy.level}/5`
-                      }
-                      color={
-                        selectedLocation.occupancy.status === 'quiet'
-                          ? 'success'
-                          : selectedLocation.occupancy.status === 'moderate'
-                          ? 'warning'
-                          : selectedLocation.occupancy.status === 'busy'
-                          ? 'error'
-                          : 'default'
-                      }
-                    />
-                    {selectedLocation.occupancy.report_count > 0 && (
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip
-                          size="small"
-                          icon={<AssessmentIcon fontSize="small" />}
-                          label={`${selectedLocation.occupancy.report_count} recent report${
-                            selectedLocation.occupancy.report_count === 1 ? '' : 's'
-                          } (last 30 min)`}
-                          variant="outlined"
-                        />
-                        {selectedLocation.occupancy.last_updated && (
-                          <Chip
-                            size="small"
-                            icon={<ScheduleIcon fontSize="small" />}
-                            label={`Last updated: ${new Date(
-                              selectedLocation.occupancy.last_updated
-                            ).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}`}
-                            variant="outlined"
-                          />
-                        )}
-                      </Box>
-                    )}
-                  </Stack>
-                ) : (
-                  <Alert severity="info">No occupancy data available for this location</Alert>
-                )}
-              </Box>
-
-              <Divider />
-
-              {/* Tags */}
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Tags
-                </Typography>
-                {selectedLocation.tags.length > 0 ? (
-                  <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                    {selectedLocation.tags.map((tag) => (
-                      <Chip key={tag} label={tag} size="small" variant="outlined" />
-                    ))}
-                  </Stack>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No tags available
-                  </Typography>
-                )}
-              </Box>
-
-              <Divider />
-
-              {/* Coordinates */}
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Coordinates
-                </Typography>
-                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                  {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
-                </Typography>
-              </Box>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseModal}>Close</Button>
-          <Button
-            variant="contained"
-            startIcon={<DirectionsIcon />}
-            onClick={handleGetDirections}
-          >
-            Get Directions
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  );
+			{decoratedEvents.length === 0 ? <Alert severity="info">No upcoming events match your filters right now.</Alert> : listContent}
+		</Box>
+	);
 };
 
 export default NearbyLocations;

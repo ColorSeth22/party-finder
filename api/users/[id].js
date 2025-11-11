@@ -22,7 +22,6 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      // Get user profile
       const userQuery = `
         SELECT 
           user_id,
@@ -34,35 +33,20 @@ export default async function handler(req, res) {
         WHERE user_id = $1
       `;
       const userResult = await pool.query(userQuery, [id]);
-      
+
       if (userResult.rows.length === 0) {
         return sendJson(res, 404, { error: 'User not found' });
       }
 
       const user = userResult.rows[0];
 
-      // Get user statistics
-      const statsQuery = `
-        SELECT 
-          COUNT(DISTINCT l.location_id) as locations_added,
-          COALESCE(SUM(CASE WHEN ua.activity_type = 'edit_location' THEN 1 ELSE 0 END), 0) as locations_edited,
-          COALESCE(SUM(CASE WHEN ua.activity_type = 'edit_tags' THEN 1 ELSE 0 END), 0) as tags_edited,
-          COALESCE(SUM(CASE WHEN ua.activity_type = 'add_rating' THEN 1 ELSE 0 END), 0) as ratings_added
-        FROM Users u
-        LEFT JOIN Locations l ON u.user_id = l.created_by
-        LEFT JOIN UserActivities ua ON u.user_id = ua.user_id
-        WHERE u.user_id = $1
-        GROUP BY u.user_id
-      `;
-      const statsResult = await pool.query(statsQuery, [id]);
-      const stats = statsResult.rows[0] || {
-        locations_added: 0,
-        locations_edited: 0,
-        tags_edited: 0,
-        ratings_added: 0
-      };
+      const [eventsCreated, upcomingEvents, checkinsMade, favoritesSaved] = await Promise.all([
+        pool.query('SELECT COUNT(*)::INT AS count FROM Events WHERE created_by = $1', [id]),
+        pool.query('SELECT COUNT(*)::INT AS count FROM Events WHERE created_by = $1 AND start_time >= NOW()', [id]),
+        pool.query('SELECT COUNT(*)::INT AS count FROM CheckIns WHERE user_id = $1', [id]),
+        pool.query('SELECT COUNT(*)::INT AS count FROM Favorites WHERE user_id = $1', [id])
+      ]);
 
-      // Get recent activities
       const activitiesQuery = `
         SELECT 
           ua.activity_id,
@@ -70,15 +54,21 @@ export default async function handler(req, res) {
           ua.points_earned,
           ua.created_at,
           ua.metadata,
-          l.name as location_name,
-          l.location_id
+          ua.event_id,
+          e.title AS event_title,
+          e.start_time
         FROM UserActivities ua
-        LEFT JOIN Locations l ON ua.location_id = l.location_id
+        LEFT JOIN Events e ON ua.event_id = e.event_id
         WHERE ua.user_id = $1
         ORDER BY ua.created_at DESC
         LIMIT 20
       `;
       const activitiesResult = await pool.query(activitiesQuery, [id]);
+
+      const eventsCreatedCount = eventsCreated.rows[0]?.count || 0;
+      const upcomingHostedCount = upcomingEvents.rows[0]?.count || 0;
+      const checkinsCount = checkinsMade.rows[0]?.count || 0;
+      const favoritesCount = favoritesSaved.rows[0]?.count || 0;
 
       return sendJson(res, 200, {
         user: {
@@ -89,25 +79,23 @@ export default async function handler(req, res) {
           created_at: user.created_at
         },
         stats: {
-          locations_added: parseInt(stats.locations_added),
-          locations_edited: parseInt(stats.locations_edited),
-          tags_edited: parseInt(stats.tags_edited),
-          ratings_added: parseInt(stats.ratings_added),
-          total_contributions: parseInt(stats.locations_added) + 
-                              parseInt(stats.locations_edited) + 
-                              parseInt(stats.tags_edited) + 
-                              parseInt(stats.ratings_added)
+          events_created: eventsCreatedCount,
+          upcoming_events_hosting: upcomingHostedCount,
+          checkins_made: checkinsCount,
+          favorites_saved: favoritesCount,
+          total_contributions: eventsCreatedCount + checkinsCount + favoritesCount
         },
-        recent_activities: activitiesResult.rows.map(a => ({
-          activity_id: a.activity_id,
-          type: a.activity_type,
-          points: a.points_earned,
-          created_at: a.created_at,
-          location: a.location_name ? {
-            id: a.location_id,
-            name: a.location_name
+        recent_activities: activitiesResult.rows.map((activity) => ({
+          activity_id: activity.activity_id,
+          type: activity.activity_type,
+          points: activity.points_earned,
+          created_at: activity.created_at,
+          event: activity.event_id ? {
+            id: activity.event_id,
+            title: activity.event_title,
+            start_time: activity.start_time
           } : null,
-          metadata: a.metadata
+          metadata: activity.metadata
         }))
       });
     }
