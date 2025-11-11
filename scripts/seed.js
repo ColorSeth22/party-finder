@@ -15,7 +15,7 @@ const sampleEvents = [
     host_type: 'fraternity',
     location_lat: 42.0226,
     location_lng: -93.6463,
-    start_time: () => new Date(Date.now() + 1000 * 60 * 60 * 24), // tomorrow
+    start_time: () => new Date(Date.now() + 1000 * 60 * 60 * 24),
     end_time: () => new Date(Date.now() + 1000 * 60 * 60 * 30),
     tags: ['Greek life', 'Glow theme', 'Dance floor'],
     theme: 'Glow Night',

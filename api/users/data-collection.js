@@ -1,5 +1,5 @@
-import { pool } from '../db';
-import { requireAuth } from '../middleware/auth';
+import { pool } from '../../server/db.js';
+import { requireAuth } from '../../server/auth.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;

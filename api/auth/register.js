@@ -1,6 +1,6 @@
 import { hash } from 'bcrypt';
 import { sign } from 'jsonwebtoken';
-import { pool } from '../db';
+import { pool } from '../../server/db.js';
 
 // Security constants
 const SALT_ROUNDS = 12; // bcrypt cost factor (higher = more secure but slower)

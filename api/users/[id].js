@@ -1,5 +1,5 @@
-import { pool } from '../db';
-import { optionalAuth } from '../middleware/auth';
+import { pool } from '../../server/db.js';
+import { optionalAuth } from '../../server/auth.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;
