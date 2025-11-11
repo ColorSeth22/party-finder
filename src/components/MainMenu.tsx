@@ -16,19 +16,20 @@ import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../contexts/auth';
 
-type ViewType = 'welcome' | 'map' | 'create' | 'manage' | 'login' | 'register' | 'upcoming';
+type ViewType = 'welcome' | 'map' | 'manage' | 'login' | 'register' | 'upcoming';
 
 type Props = {
   currentView: ViewType;
   setView: (view: ViewType) => void;
+  onHostClick: () => void;
 };
 
-const MainMenu = ({ currentView, setView }: Props) => {
+const MainMenu = ({ currentView, setView, onHostClick }: Props) => {
   const { isAuthenticated, logout } = useAuth();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // Derive the navigation value (exclude auth-only views from selection highlighting)
-  const navValue = ['map', 'upcoming', 'create', 'manage'].includes(currentView)
+  const navValue = ['map', 'upcoming', 'manage'].includes(currentView)
     ? currentView
     : 'map';
 
@@ -65,7 +66,12 @@ const MainMenu = ({ currentView, setView }: Props) => {
               handleAuthAction();
               return;
             }
-            // Type guard: newValue is one of our view strings (except 'auth')
+            // 'host' opens modal instead of changing view
+            if (newValue === 'host') {
+              onHostClick();
+              return;
+            }
+            // Type guard: newValue is one of our view strings (except 'auth' and 'host')
             setView(newValue as ViewType);
         }}
         sx={{
@@ -91,7 +97,7 @@ const MainMenu = ({ currentView, setView }: Props) => {
           }}
         />
         <BottomNavigationAction
-          value="create"
+          value="host"
           label="Host"
           icon={<CelebrationIcon />}
           sx={{

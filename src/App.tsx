@@ -5,6 +5,11 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import IconButton from '@mui/material/IconButton';
+import CloseIcon from '@mui/icons-material/Close';
 import MainMenu from './components/MainMenu';
 import Map from './components/Map';
 import AddEventForm, { type NewEventPayload } from './components/AddEventForm';
@@ -37,12 +42,13 @@ type Event = {
   created_at: string;
 };
 
-type View = 'welcome' | 'map' | 'create' | 'manage' | 'login' | 'register' | 'upcoming';
+type View = 'welcome' | 'map' | 'manage' | 'login' | 'register' | 'upcoming';
 
 function AppContent() {
   const hasSeenWelcome = localStorage.getItem('hasSeenPartyWelcome') === 'true';
   const [view, setView] = useState<View>(hasSeenWelcome ? 'map' : 'welcome');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [addEventModalOpen, setAddEventModalOpen] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [eventsRefreshing, setEventsRefreshing] = useState(false);
   const [lastEventsUpdate, setLastEventsUpdate] = useState<number | null>(null);
@@ -135,6 +141,7 @@ function AppContent() {
       });
 
       if (res.status === 401) {
+        setAddEventModalOpen(false);
         setView('login');
         return;
       }
@@ -147,6 +154,7 @@ function AppContent() {
 
       const created = (await res.json()) as Event;
       setEvents((prev) => [...prev, created]);
+      setAddEventModalOpen(false);
       setView('map');
       setSnackbar({ message: 'Event published!', severity: 'success' });
     } catch (error) {
@@ -313,7 +321,17 @@ function AppContent() {
           </Box>
         ) : (
           <>
-            <MainMenu currentView={view} setView={setView} />
+            <MainMenu 
+              currentView={view} 
+              setView={setView} 
+              onHostClick={() => {
+                if (!token) {
+                  setView('login');
+                } else {
+                  setAddEventModalOpen(true);
+                }
+              }}
+            />
             <Box
               component="main"
               sx={{
@@ -357,7 +375,6 @@ function AppContent() {
                       onToggleFavorite={handleToggleFavorite}
                     />
                   )}
-                  {view === 'create' && <AddEventForm onAdd={handleAddEvent} />}
                   {view === 'manage' && (
                     <UpdateLocationForm
                       events={events}
@@ -374,6 +391,32 @@ function AppContent() {
                 </Box>
               )}
             </Box>
+
+            <Dialog 
+              open={addEventModalOpen} 
+              onClose={() => setAddEventModalOpen(false)}
+              maxWidth="md"
+              fullWidth
+            >
+              <DialogTitle>
+                Host a Party
+                <IconButton
+                  aria-label="close"
+                  onClick={() => setAddEventModalOpen(false)}
+                  sx={{
+                    position: 'absolute',
+                    right: 8,
+                    top: 8,
+                    color: (theme) => theme.palette.grey[500],
+                  }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent>
+                <AddEventForm onAdd={handleAddEvent} />
+              </DialogContent>
+            </Dialog>
 
             <UserProfile open={profileOpen} onClose={() => setProfileOpen(false)} />
           </>
