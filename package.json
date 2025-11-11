@@ -2,14 +2,15 @@
   "name": "quiet-hours",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "vite",
     "start:server": "node server/index.js",
     "start": "concurrently \"npm run start:server\" \"npm run dev\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

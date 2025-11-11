@@ -1,5 +1,5 @@
-import { pool } from '../../server/db.js';
-import { optionalAuth } from '../../server/auth.js';
+import { pool } from '../../utils/db.js';
+import { optionalAuth } from '../../utils/auth.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;

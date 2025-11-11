@@ -1,5 +1,5 @@
-import { pool } from '../../server/db.js';
-import { requireAuth } from '../../server/auth.js';
+import { pool } from '../../utils/db.js';
+import { requireAuth } from '../../utils/auth.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;

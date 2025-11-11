@@ -1,1 +1,7 @@
-{}
+{
+		"functions": {
+			"api/**/*.js": {
+				"includeFiles": "utils/db.js, utils/auth.js"
+			}
+		}
+}

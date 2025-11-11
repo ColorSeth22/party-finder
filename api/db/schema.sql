@@ -57,6 +57,24 @@ CREATE TABLE IF NOT EXISTS UserActivities (
 );
 
 -- Function to award points for user activities
+-- Drop previous versions to avoid parameter-name mismatch errors
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_proc
+        WHERE proname = 'award_points'
+          AND oid = (
+            SELECT p.oid FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE p.proname = 'award_points'
+              AND n.nspname = 'public'
+              AND pg_get_function_identity_arguments(p.oid) = 'uuid, text, uuid, jsonb'
+          )
+    ) THEN
+        DROP FUNCTION IF EXISTS award_points(UUID, TEXT, UUID, JSONB);
+    END IF;
+END$$;
+
 CREATE OR REPLACE FUNCTION award_points(
     p_user_id UUID,
     p_activity_type TEXT,

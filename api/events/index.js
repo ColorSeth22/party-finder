@@ -1,5 +1,5 @@
-import { pool } from '../../server/db.js';
-import { requireAuth } from '../../server/auth.js';
+import { pool } from '../../utils/db.js';
+import { requireAuth } from '../../utils/auth.js';
 
 function sendJson(res, statusCode, data) {
   res.statusCode = statusCode;
@@ -48,6 +48,13 @@ function parseFilters(req) {
 
 export default async function handler(req, res) {
   try {
+    if (!process.env.DATABASE_URL) {
+      return sendJson(res, 500, {
+        error: 'Database not configured',
+        detail: 'Missing DATABASE_URL. Set it in .env (for vercel dev) or project env variables.'
+      });
+    }
+
     if (req.method === 'GET') {
       const filters = parseFilters(req);
       const conditions = [];
@@ -219,6 +226,24 @@ export default async function handler(req, res) {
     res.end('Method Not Allowed');
   } catch (error) {
     console.error('Events API error:', error);
-    return sendJson(res, 500, { error: 'Internal server error' });
+    let detail;
+    // Enhance diagnostics for common Postgres/network issues in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      const anyErr = error;
+      const code = anyErr && typeof anyErr === 'object' ? anyErr.code : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      if (code === '42P01') {
+        detail = 'Database tables are missing (relation does not exist). Run the schema in api/db/schema.sql.';
+      } else if (code === '28P01') {
+        detail = 'Invalid database credentials. Check DATABASE_URL username/password.';
+      } else if (code === '3D000') {
+        detail = 'Target database does not exist. Verify the database name in DATABASE_URL.';
+      } else if (message && /ENOTFOUND|ECONNREFUSED|timeout/i.test(message)) {
+        detail = 'Unable to connect to the database host. Verify DATABASE_URL host/port and network access.';
+      } else {
+        detail = message;
+      }
+    }
+    return sendJson(res, 500, { error: 'Internal server error', detail });
   }
 }
