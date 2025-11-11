@@ -1,8 +1,1 @@
-{
-  "functions": {
-    "api/**.js": {
-      "includeFiles": "api/{auth/login.js,auth/register.js,events/index.js,events/[id].js,favorites/index.js,checkins/index.js,users/[id].js,users/data-collection.js}"
-    }
-  }
-}
-
+{}
