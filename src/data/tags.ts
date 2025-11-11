@@ -17,7 +17,9 @@ export const TAGS = [
   'All Ages',
   'Game Night',
   'Chill Vibes',
-  'High Energy'
+  'High Energy',
+  'Wine Wednesday',
+  'Booths',
 ];
 
 export default TAGS;
