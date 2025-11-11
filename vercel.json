@@ -1,1 +1,32 @@
-{}
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    { "src": "api/auth/login.js", "use": "@vercel/node" },
+    { "src": "api/auth/register.js", "use": "@vercel/node" },
+    { "src": "api/events/index.js", "use": "@vercel/node" },
+    { "src": "api/events/[id].js", "use": "@vercel/node" },
+    { "src": "api/favorites/index.js", "use": "@vercel/node" },
+    { "src": "api/checkins/index.js", "use": "@vercel/node" },
+    { "src": "api/users/[id].js", "use": "@vercel/node" },
+    { "src": "api/users/data-collection.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/auth/login", "dest": "/api/auth/login.js" },
+    { "src": "/api/auth/register", "dest": "/api/auth/register.js" },
+    { "src": "/api/events", "dest": "/api/events/index.js" },
+    { "src": "/api/events/(.*)", "dest": "/api/events/[id].js" },
+    { "src": "/api/favorites", "dest": "/api/favorites/index.js" },
+    { "src": "/api/checkins", "dest": "/api/checkins/index.js" },
+    { "src": "/api/users/data-collection", "dest": "/api/users/data-collection.js" },
+    { "src": "/api/users/(.*)", "dest": "/api/users/[id].js" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
+
