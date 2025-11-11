@@ -1,0 +1,24 @@
+/* Dark mode styles for Leaflet popups */
+.leaflet-popup-content-wrapper {
+  background-color: var(--popup-bg);
+  color: var(--popup-text);
+}
+
+.leaflet-popup-tip {
+  background-color: var(--popup-bg);
+}
+
+/* Ensure links are visible in dark mode */
+.leaflet-popup-content a {
+  color: var(--popup-link);
+}
+
+/* Attribution control styling for dark mode */
+.leaflet-control-attribution {
+  background-color: var(--popup-bg) !important;
+  color: var(--popup-text) !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--popup-link) !important;
+}

@@ -16,20 +16,21 @@ import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../contexts/auth';
 
-type ViewType = 'welcome' | 'map' | 'manage' | 'login' | 'register' | 'upcoming';
+type ViewType = 'welcome' | 'map' | 'login' | 'register' | 'upcoming';
 
 type Props = {
   currentView: ViewType;
   setView: (view: ViewType) => void;
   onHostClick: () => void;
+  onManageClick: () => void;
 };
 
-const MainMenu = ({ currentView, setView, onHostClick }: Props) => {
+const MainMenu = ({ currentView, setView, onHostClick, onManageClick }: Props) => {
   const { isAuthenticated, logout } = useAuth();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // Derive the navigation value (exclude auth-only views from selection highlighting)
-  const navValue = ['map', 'upcoming', 'manage'].includes(currentView)
+  const navValue = ['map', 'upcoming'].includes(currentView)
     ? currentView
     : 'map';
 
@@ -71,7 +72,12 @@ const MainMenu = ({ currentView, setView, onHostClick }: Props) => {
               onHostClick();
               return;
             }
-            // Type guard: newValue is one of our view strings (except 'auth' and 'host')
+            // 'manage' opens modal instead of changing view
+            if (newValue === 'manage') {
+              onManageClick();
+              return;
+            }
+            // Type guard: newValue is one of our view strings (except 'auth', 'host', 'manage')
             setView(newValue as ViewType);
         }}
         sx={{

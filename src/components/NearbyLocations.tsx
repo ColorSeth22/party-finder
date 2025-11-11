@@ -73,13 +73,20 @@ const NearbyLocations = ({
 	const [expandedId, setExpandedId] = useState<string | null>(null);
 
 	const decoratedEvents = useMemo<EventWithDistance[]>(() => {
-		const now = Date.now();
-		const endThreshold = now - 60 * 60 * 1000; // show events ending within the last hour
+		const now = new Date();
 
+		// Filter to only show events that haven't ended yet
 		const upcoming = events.filter((event) => {
 			if (!event.is_active) return false;
-			const endsAt = event.end_time ? new Date(event.end_time).getTime() : new Date(event.start_time).getTime();
-			return endsAt >= endThreshold;
+			
+			// If there's an end_time, check if it's in the future
+			if (event.end_time) {
+				const endTime = new Date(event.end_time);
+				return endTime > now;
+			}
+			
+			// If no end_time, always show active events
+			return true;
 		});
 
 		return upcoming

@@ -116,7 +116,7 @@ const UpdateLocationForm = ({ events, currentUserId, onUpdateEvent }: Props) => 
 		} finally {
 			setIsSaving(false);
 		}
-	};
+	}
 
 	if (!currentUserId) {
 		return <Alert severity="info">Sign in to manage the events you are hosting.</Alert>;
@@ -127,17 +127,8 @@ const UpdateLocationForm = ({ events, currentUserId, onUpdateEvent }: Props) => 
 	}
 
 	return (
-		<Box sx={{ p: 2, maxWidth: 640 }}>
+		<Box>
 			<Stack spacing={3}>
-				<Box>
-					<Typography variant="h5" sx={{ fontWeight: 600 }} gutterBottom>
-						Manage My Events
-					</Typography>
-					<Typography variant="body2" color="text.secondary">
-						Update party details, tags, and visibility. Changes apply instantly for everyone viewing the map.
-					</Typography>
-				</Box>
-
 				<Select
 					value={selectedId}
 					onChange={(event) => setSelectedId(event.target.value as string)}

@@ -20,6 +20,8 @@ import UserProfile from './components/UserProfile.tsx';
 import NearbyLocations from './components/NearbyLocations';
 import { SettingsProvider } from './contexts/settings/provider';
 import { AuthProvider, useAuth } from './contexts/auth';
+import { useSettings } from './contexts/settings/hooks';
+import { ThemeWrapper } from './components/ThemeWrapper';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -40,23 +42,27 @@ type Event = {
   is_active: boolean;
   created_by: string;
   created_at: string;
+  checkin_count?: number;
 };
 
-type View = 'welcome' | 'map' | 'manage' | 'login' | 'register' | 'upcoming';
+type View = 'welcome' | 'map' | 'login' | 'register' | 'upcoming';
 
 function AppContent() {
   const hasSeenWelcome = localStorage.getItem('hasSeenPartyWelcome') === 'true';
   const [view, setView] = useState<View>(hasSeenWelcome ? 'map' : 'welcome');
   const [profileOpen, setProfileOpen] = useState(false);
   const [addEventModalOpen, setAddEventModalOpen] = useState(false);
+  const [manageEventsModalOpen, setManageEventsModalOpen] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [eventsRefreshing, setEventsRefreshing] = useState(false);
   const [lastEventsUpdate, setLastEventsUpdate] = useState<number | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
+  const [checkedInIds, setCheckedInIds] = useState<Set<string>>(() => new Set());
   const [pendingFavorite, setPendingFavorite] = useState<string | null>(null);
   const [pendingCheckIn, setPendingCheckIn] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   const { token, user } = useAuth();
+  const { autoRefresh } = useSettings();
 
   const handleCloseSnackbar = () => setSnackbar(null);
 
@@ -92,11 +98,13 @@ function AppContent() {
   }, [fetchEvents]);
 
   useEffect(() => {
+    if (!autoRefresh) return;
+    
     const id = setInterval(() => {
       fetchEvents();
     }, 30_000);
     return () => clearInterval(id);
-  }, [fetchEvents]);
+  }, [fetchEvents, autoRefresh]);
 
   useEffect(() => {
     const fetchFavorites = async () => {
@@ -125,6 +133,35 @@ function AppContent() {
     };
 
     fetchFavorites();
+  }, [token]);
+
+  useEffect(() => {
+    const fetchCheckins = async () => {
+      if (!token) {
+        setCheckedInIds(new Set());
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/checkins`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+          setCheckedInIds(new Set());
+          return;
+        }
+        if (!res.ok) {
+          console.error('Failed to load check-ins', await res.text());
+          return;
+        }
+        const checkins = (await res.json()) as Array<{ event_id: string }>;
+        setCheckedInIds(new Set(checkins.map((checkin) => checkin.event_id)));
+      } catch (error) {
+        console.error('Error loading check-ins', error);
+      }
+    };
+
+    fetchCheckins();
   }, [token]);
 
   const handleAddEvent = async (payload: NewEventPayload) => {
@@ -276,6 +313,16 @@ function AppContent() {
         return;
       }
 
+      // Add to checked-in events
+      setCheckedInIds((prev) => {
+        const next = new Set(prev);
+        next.add(eventId);
+        return next;
+      });
+
+      // Refresh events to get updated check-in count
+      fetchEvents();
+
       setSnackbar({ message: 'Checked in! Have fun 🎉', severity: 'success' });
     } catch (error) {
       console.error('Error checking in', error);
@@ -286,8 +333,7 @@ function AppContent() {
   };
 
   return (
-    <SettingsProvider>
-      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {view === 'welcome' ? (
           <Box
             component="main"
@@ -331,6 +377,13 @@ function AppContent() {
                   setAddEventModalOpen(true);
                 }
               }}
+              onManageClick={() => {
+                if (!token) {
+                  setView('login');
+                } else {
+                  setManageEventsModalOpen(true);
+                }
+              }}
             />
             <Box
               component="main"
@@ -354,6 +407,7 @@ function AppContent() {
                   <Map
                     events={events}
                     favoriteIds={favoriteIds}
+                    checkedInIds={checkedInIds}
                     onToggleFavorite={handleToggleFavorite}
                     onCheckIn={handleCheckIn}
                     pendingFavoriteId={pendingFavorite}
@@ -373,13 +427,6 @@ function AppContent() {
                       events={events}
                       favoriteIds={favoriteIds}
                       onToggleFavorite={handleToggleFavorite}
-                    />
-                  )}
-                  {view === 'manage' && (
-                    <UpdateLocationForm
-                      events={events}
-                      currentUserId={user?.user_id ?? null}
-                      onUpdateEvent={handleUpdateEvent}
                     />
                   )}
                   {view === 'login' && (
@@ -418,6 +465,36 @@ function AppContent() {
               </DialogContent>
             </Dialog>
 
+            <Dialog 
+              open={manageEventsModalOpen} 
+              onClose={() => setManageEventsModalOpen(false)}
+              maxWidth="md"
+              fullWidth
+            >
+              <DialogTitle>
+                Manage My Events
+                <IconButton
+                  aria-label="close"
+                  onClick={() => setManageEventsModalOpen(false)}
+                  sx={{
+                    position: 'absolute',
+                    right: 8,
+                    top: 8,
+                    color: (theme) => theme.palette.grey[500],
+                  }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent>
+                <UpdateLocationForm
+                  events={events}
+                  currentUserId={user?.user_id ?? null}
+                  onUpdateEvent={handleUpdateEvent}
+                />
+              </DialogContent>
+            </Dialog>
+
             <UserProfile open={profileOpen} onClose={() => setProfileOpen(false)} />
           </>
         )}
@@ -435,14 +512,17 @@ function AppContent() {
           ) : undefined}
         </Snackbar>
       </Box>
-    </SettingsProvider>
   );
 }
 
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <SettingsProvider>
+        <ThemeWrapper>
+          <AppContent />
+        </ThemeWrapper>
+      </SettingsProvider>
     </AuthProvider>
   );
 }

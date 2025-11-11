@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import { useTheme } from '@mui/material/styles';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import CelebrationIcon from '@mui/icons-material/Celebration';
@@ -47,11 +48,13 @@ type Event = {
   cover_charge: string | null;
   is_byob: boolean;
   is_active: boolean;
+  checkin_count?: number;
 };
 
 type Props = {
   events: Event[];
   favoriteIds: Set<string>;
+  checkedInIds: Set<string>;
   onToggleFavorite: (eventId: string) => void;
   onCheckIn: (eventId: string) => void;
   pendingFavoriteId: string | null;
@@ -83,6 +86,7 @@ const MapUpdater = ({ coords }: { coords: { latitude: number; longitude: number 
 const Map = ({
   events,
   favoriteIds,
+  checkedInIds,
   onToggleFavorite,
   onCheckIn,
   pendingFavoriteId,
@@ -93,14 +97,25 @@ const Map = ({
   lastEventsUpdate
 }: Props) => {
   const { coords, accuracy, error, loading, refetch } = useGeolocation();
-  const { distanceUnit } = useSettings();
+  const { distanceUnit, showDistanceLabels } = useSettings();
   const { isAuthenticated } = useAuth();
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   const defaultCenter: [number, number] = [42.026, -93.648];
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const visibleEvents = useMemo(() => {
-    const sorted = [...events].sort(
+    const now = new Date();
+    
+    // Filter out completed events (past end_time)
+    const activeEvents = events.filter((event) => {
+      if (!event.end_time) return true; // No end time, always show
+      const endTime = new Date(event.end_time);
+      return endTime > now; // Only show if not yet ended
+    });
+    
+    const sorted = [...activeEvents].sort(
       (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     );
     if (!selectedTags.length) return sorted;
@@ -111,7 +126,7 @@ const Map = ({
   }, [events, selectedTags]);
 
   const renderDistanceChip = (event: Event) => {
-    if (!coords) return null;
+    if (!coords || !showDistanceLabels) return null;
     const distance = getDistanceKm(
       coords.latitude,
       coords.longitude,
@@ -145,7 +160,7 @@ const Map = ({
             top: 16,
             right: 80,
             zIndex: 1000,
-            backgroundColor: 'white',
+            backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.9)' : 'white',
             borderRadius: '50%',
             boxShadow: 2
           }}
@@ -164,7 +179,7 @@ const Map = ({
           top: 16,
           right: 16,
           zIndex: 1000,
-          backgroundColor: 'white',
+          backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.9)' : 'white',
           borderRadius: '50%',
           boxShadow: 2
         }}
@@ -182,7 +197,7 @@ const Map = ({
           top: 80,
           right: 16,
           zIndex: 1000,
-          backgroundColor: 'white',
+          backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.9)' : 'white',
           borderRadius: '50%',
           boxShadow: 2
         }}
@@ -207,7 +222,7 @@ const Map = ({
           top: 144,
           right: 16,
           zIndex: 1000,
-          backgroundColor: 'white',
+          backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.9)' : 'white',
           borderRadius: '50%',
           boxShadow: 2
         }}
@@ -235,15 +250,41 @@ const Map = ({
       </Box>
 
       <MapContainer center={defaultCenter} zoom={15} style={{ height: '100%', width: '100%' }}>
-        <TileLayer
-          attribution="&copy; <a href='https://www.openstreetmap.org/'>OpenStreetMap</a> contributors"
-          url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-        />
+        {isDarkMode ? (
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          />
+        ) : (
+          <TileLayer
+            attribution="&copy; <a href='https://www.openstreetmap.org/'>OpenStreetMap</a> contributors"
+            url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+          />
+        )}
 
         {visibleEvents.map((event) => {
           const startTime = new Date(event.start_time);
           const endTime = event.end_time ? new Date(event.end_time) : null;
           const isFavorite = favoriteIds.has(event.id);
+          const hasCheckedIn = checkedInIds.has(event.id);
+          const now = new Date();
+          const hasStarted = now >= startTime;
+          
+          // Calculate distance to event (in meters)
+          let distanceToEvent: number | null = null;
+          let canCheckIn = false;
+          
+          if (coords && !hasCheckedIn) {
+            const distanceKm = getDistanceKm(
+              coords.latitude,
+              coords.longitude,
+              event.location_lat,
+              event.location_lng
+            );
+            distanceToEvent = distanceKm * 1000; // Convert to meters
+            // Allow check-in if within 100 meters (~328 feet) and event has started
+            canCheckIn = hasStarted && distanceToEvent <= 100;
+          }
 
           return (
             <Marker key={event.id} position={[event.location_lat, event.location_lng]} icon={defaultIcon}>
@@ -258,6 +299,14 @@ const Map = ({
 
                   <Stack direction='row' spacing={1} flexWrap='wrap' useFlexGap>
                     <Chip size='small' icon={<CelebrationIcon fontSize='small' />} label={HOST_LABELS[event.host_type]} />
+                    {(event.checkin_count ?? 0) > 0 && (
+                      <Chip 
+                        size='small' 
+                        color='success'
+                        icon={<CheckCircleIcon fontSize='small' />} 
+                        label={`~${event.checkin_count} ${event.checkin_count === 1 ? 'person' : 'people'} here`}
+                      />
+                    )}
                     <Chip
                       size='small'
                       icon={<ScheduleIcon fontSize='small' />}
@@ -334,17 +383,46 @@ const Map = ({
                         ? 'Favorited'
                         : 'Favorite'}
                     </Button>
-                    <Button
-                      size='small'
-                      variant='contained'
-                      color='primary'
-                      startIcon={<CheckCircleIcon />}
-                      onClick={() => onCheckIn(event.id)}
-                      disabled={pendingCheckInId === event.id}
-                      fullWidth
+                    <Tooltip
+                      title={
+                        hasCheckedIn
+                          ? 'You already checked in to this party!'
+                          : !hasStarted 
+                          ? `Party starts ${startTime.toLocaleString()}`
+                          : !coords
+                          ? 'Enable location services to check in'
+                          : distanceToEvent && distanceToEvent > 100
+                          ? `You must be within 100m of the event (currently ${Math.round(distanceToEvent)}m away)`
+                          : canCheckIn
+                          ? 'Check in to this party!'
+                          : ''
+                      }
+                      arrow
                     >
-                      {pendingCheckInId === event.id ? 'Checking in...' : 'Check in'}
-                    </Button>
+                      <span style={{ width: '100%' }}>
+                        <Button
+                          size='small'
+                          variant={hasCheckedIn ? 'outlined' : 'contained'}
+                          color='primary'
+                          startIcon={<CheckCircleIcon />}
+                          onClick={() => onCheckIn(event.id)}
+                          disabled={hasCheckedIn || !canCheckIn || pendingCheckInId === event.id}
+                          fullWidth
+                        >
+                          {hasCheckedIn
+                            ? 'Checked in ✓'
+                            : pendingCheckInId === event.id 
+                            ? 'Checking in...' 
+                            : !hasStarted
+                            ? 'Not started'
+                            : !canCheckIn && coords
+                            ? 'Too far'
+                            : !coords
+                            ? 'Need location'
+                            : 'Check in'}
+                        </Button>
+                      </span>
+                    </Tooltip>
                   </Stack>
                 </Stack>
               </Popup>
