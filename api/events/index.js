@@ -48,6 +48,15 @@ function parseFilters(req) {
 
 export default async function handler(req, res) {
   try {
+    // Basic CORS for web usage; RN native ignores CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      return sendJson(res, 200, {});
+    }
+
     if (!process.env.DATABASE_URL) {
       return sendJson(res, 500, {
         error: 'Database not configured',
