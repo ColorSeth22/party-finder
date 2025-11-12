@@ -53,7 +53,8 @@ const editableFields = new Set([
   'music_type',
   'cover_charge',
   'is_byob',
-  'is_active'
+  'is_active',
+  'visibility'
 ]);
 
 export default async function handler(req, res) {
@@ -82,6 +83,8 @@ export default async function handler(req, res) {
             is_byob,
             is_active,
             created_by,
+            created_by AS user_id,
+            visibility,
             created_at
           FROM Events
           WHERE event_id = $1`,
@@ -132,6 +135,10 @@ export default async function handler(req, res) {
       for (const key of fields) {
         if (key === 'host_type' && !['fraternity', 'house', 'club'].includes(updates[key])) {
           return sendJson(res, 400, { error: 'host_type must be one of fraternity, house, club' });
+        }
+
+        if (key === 'visibility' && !['everyone', 'friends'].includes(updates[key])) {
+          return sendJson(res, 400, { error: 'visibility must be one of everyone, friends' });
         }
 
         if ((key === 'start_time' || key === 'end_time') && updates[key]) {

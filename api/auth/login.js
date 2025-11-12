@@ -48,7 +48,7 @@ export default async function handler(req, res) {
 
     // Find user by email
     const result = await pool.query(
-      `SELECT user_id, email, password_hash, display_name, reputation_score, created_at
+      `SELECT user_id, email, password_hash, display_name, reputation_score, friend_code, created_at
        FROM Users
        WHERE email = $1`,
       [email.toLowerCase()]
@@ -84,6 +84,7 @@ export default async function handler(req, res) {
         user_id: user.user_id,
         email: user.email,
         display_name: user.display_name,
+        friend_code: user.friend_code,
         reputation_score: user.reputation_score,
         created_at: user.created_at
       },

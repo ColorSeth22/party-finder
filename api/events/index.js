@@ -95,6 +95,8 @@ export default async function handler(req, res) {
           is_byob,
           is_active,
           created_by,
+          created_by AS user_id,
+          visibility,
           created_at
         FROM Events
         ${whereClause}
@@ -153,6 +155,10 @@ export default async function handler(req, res) {
         ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean)
         : [];
 
+      const visibility = payload.visibility && ['everyone', 'friends'].includes(payload.visibility)
+        ? payload.visibility
+        : 'everyone';
+
       const insertQuery = `
         INSERT INTO Events (
           title,
@@ -168,9 +174,10 @@ export default async function handler(req, res) {
           cover_charge,
           is_byob,
           is_active,
-          created_by
+          created_by,
+          visibility
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, false), $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, false), $13, $14, $15)
         RETURNING 
           event_id AS id,
           title,
@@ -187,6 +194,8 @@ export default async function handler(req, res) {
           is_byob,
           is_active,
           created_by,
+          created_by AS user_id,
+          visibility,
           created_at
       `;
 
@@ -204,7 +213,8 @@ export default async function handler(req, res) {
         payload.cover_charge || null,
         typeof payload.is_byob === 'boolean' ? payload.is_byob : null,
         payload.is_active !== false,
-        authResult.user.user_id
+        authResult.user.user_id,
+        visibility
       ];
 
       const result = await pool.query(insertQuery, values);

@@ -12,8 +12,33 @@ CREATE TABLE IF NOT EXISTS Users (
     display_name TEXT,
     reputation_score INTEGER DEFAULT 0,
     allow_data_collection BOOLEAN DEFAULT false,
+    -- Short, shareable code for adding friends
+    friend_code TEXT UNIQUE NOT NULL DEFAULT lower(encode(gen_random_bytes(4), 'hex')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Backfill friend_code for existing databases where Users table already exists without the column
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'friend_code'
+    ) THEN
+        ALTER TABLE Users ADD COLUMN friend_code TEXT;
+        -- Populate with an 8-character code derived from md5 of user_id for stability
+        UPDATE Users SET friend_code = substr(md5(user_id::text), 1, 8) WHERE friend_code IS NULL;
+        ALTER TABLE Users ALTER COLUMN friend_code SET NOT NULL;
+        -- Ensure uniqueness
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'uq_users_friend_code'
+        ) THEN
+            CREATE UNIQUE INDEX uq_users_friend_code ON Users(friend_code);
+        END IF;
+        -- Add a default for future inserts in case CREATE TABLE IF NOT EXISTS path was taken earlier
+        ALTER TABLE Users ALTER COLUMN friend_code SET DEFAULT lower(encode(gen_random_bytes(4), 'hex'));
+    END IF;
+END;
+$$;
 
 -- Host type enum for events
 DO $$
