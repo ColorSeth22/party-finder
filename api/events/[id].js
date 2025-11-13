@@ -219,7 +219,30 @@ export default async function handler(req, res) {
       return sendJson(res, 200, result.rows[0]);
     }
 
-    res.setHeader('Allow', 'GET, PUT');
+    if (req.method === 'DELETE') {
+      const authResult = await requireAuth(req);
+      if (authResult.error) {
+        return sendJson(res, authResult.status, { error: authResult.error });
+      }
+
+      const existing = await pool.query(
+        'SELECT event_id, created_by FROM Events WHERE event_id = $1',
+        [eventId]
+      );
+
+      if (!existing.rows.length) {
+        return sendJson(res, 404, { error: 'Event not found' });
+      }
+
+      if (existing.rows[0].created_by !== authResult.user.user_id) {
+        return sendJson(res, 403, { error: 'Only the event owner can delete this event' });
+      }
+
+      await pool.query('DELETE FROM Events WHERE event_id = $1', [eventId]);
+      return sendJson(res, 200, { message: 'Event deleted' });
+    }
+
+    res.setHeader('Allow', 'GET, PUT, DELETE');
     res.statusCode = 405;
     res.end('Method Not Allowed');
   } catch (error) {
