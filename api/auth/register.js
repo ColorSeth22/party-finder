@@ -1,5 +1,6 @@
 import { hash } from 'bcrypt';
-import { sign } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
+const { sign } = jwt;
 import { pool } from '../../utils/db.js';
 
 // Security constants

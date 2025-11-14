@@ -1,6 +1,6 @@
 import { compare } from 'bcrypt';
-import { jsonwebtoken } from 'jsonwebtoken';
-const { sign } = jsonwebtoken;
+import jwt from 'jsonwebtoken';
+const { sign } = jwt;
 import { pool } from '../../utils/db.js';
 
 const JWT_EXPIRY = '7d'; // Token expires in 7 days
