@@ -18,13 +18,49 @@ import eventMediaRouter from './routes/eventMedia.js';
 export function createApp() {
   const app = express();
 
-  app.use(cors());
-  app.use(express.json());
+  // Explicit CORS configuration (helps debug preflight issues on Vercel)
+  const corsOptions = {
+    origin: (origin, cb) => cb(null, true), // reflect origin (allows credentials if later enabled)
+    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization'],
+    maxAge: 86400
+  };
+  app.use(cors(corsOptions));
+
+  // Manual preflight handler (some serverless platforms are sensitive to timing)
+  app.options('*', cors(corsOptions));
+
+  app.use(express.json({ limit: '2mb' }));
   app.use(morgan('dev'));
+
+  // Basic request trace (disable if noisy)
+  app.use((req, _res, next) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[req]', req.method, req.originalUrl, 'hdr:', Object.keys(req.headers));
+    }
+    next();
+  });
 
   // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Diagnostics (DO NOT expose secrets) - helpful in serverless
+  app.get('/api/diagnostics', (req, res) => {
+    res.json({
+      env: {
+        databaseUrlSet: !!process.env.DATABASE_URL,
+        jwtSecretSet: !!process.env.JWT_SECRET,
+        nodeEnv: process.env.NODE_ENV || 'undefined'
+      },
+      request: {
+        method: req.method,
+        path: req.originalUrl,
+        headersSample: Object.fromEntries(Object.entries(req.headers).slice(0, 10))
+      },
+      timestamp: new Date().toISOString()
+    });
   });
 
   // Routers
@@ -40,9 +76,9 @@ export function createApp() {
   app.use('/api/friends/requests', friendRequestsRouter);
   app.use('/api/events', eventMediaRouter); // media sub-routes mounted on /api/events (merges on same path)
 
-  // 404 fallback
+  // 404 fallback (after routes)
   app.use((req, res) => {
-    res.status(404).json({ error: 'Not Found' });
+    res.status(404).json({ error: 'Not Found', path: req.originalUrl });
   });
 
   // Central error handler
