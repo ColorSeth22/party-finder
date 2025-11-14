@@ -18,19 +18,20 @@
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
     "@neondatabase/serverless": "^1.0.2",
+    "@vercel/node": "^5.5.6",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "morgan": "^1.10.0",
     "dotenv": "^16.4.5",
+    "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "leaflet": "^1.9.4",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
     "pg": "^8.16.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-icons": "^5.5.0",
     "react-leaflet": "^5.0.0"
-    ,"multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

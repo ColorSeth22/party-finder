@@ -1,7 +1,13 @@
 {
-		"functions": {
-			"api/**/*.js": {
-				"includeFiles": "utils/db.js, utils/auth.js"
-			}
+	"rewrites": [
+		{
+			"source": "/api/(.*)",
+			"destination": "/api"
 		}
+	],
+	"functions": {
+		"api/index.js": {
+			"includeFiles": "server/**/*.js, utils/**/*.js"
+		}
+	}
 }
