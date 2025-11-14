@@ -25,6 +25,11 @@ export async function requireAuth(req) {
     const token = parts[1];
     console.log('[requireAuth] Token received, length:', token.length);
     
+    if (!process.env.JWT_SECRET) {
+      console.error('[requireAuth] JWT_SECRET not configured in environment');
+      return { error: 'Server configuration error', status: 500 };
+    }
+    
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('[requireAuth] Token verified successfully:', { user_id: decoded.user_id, email: decoded.email });
 
@@ -40,7 +45,7 @@ export async function requireAuth(req) {
       return { error: 'Token expired. Please log in again.', status: 401 };
     }
     if (error.name === 'JsonWebTokenError') {
-      console.log('[requireAuth] Invalid JWT:', error.message);
+      console.log('[requireAuth] Invalid JWT:', error.message, '| Token preview:', token?.substring(0, 20));
       return { error: 'Invalid token', status: 401 };
     }
     console.error('[requireAuth] Auth middleware error:', error);
