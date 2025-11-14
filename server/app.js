@@ -46,6 +46,16 @@ export function createApp() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Root landing for API-only deployment
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'party-finder-api',
+      version: process.env.npm_package_version || 'unknown',
+      endpoints: ['/api/auth/login','/api/events','/api/health','/api/diagnostics'],
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Diagnostics (DO NOT expose secrets) - helpful in serverless
   app.get('/api/diagnostics', (req, res) => {
     res.json({
