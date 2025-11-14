@@ -43,6 +43,8 @@ type Event = {
   created_by: string;
   created_at: string;
   checkin_count?: number;
+  is_archived?: boolean;
+  archived_at?: string | null;
 };
 
 type View = 'welcome' | 'map' | 'login' | 'register' | 'upcoming';
@@ -54,6 +56,9 @@ function AppContent() {
   const [addEventModalOpen, setAddEventModalOpen] = useState(false);
   const [manageEventsModalOpen, setManageEventsModalOpen] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
+  const [archivedEvents, setArchivedEvents] = useState<Event[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
   const [eventsRefreshing, setEventsRefreshing] = useState(false);
   const [lastEventsUpdate, setLastEventsUpdate] = useState<number | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
@@ -92,6 +97,50 @@ function AppContent() {
       isRefreshingRef.current = false;
     }
   }, []);
+
+  const fetchArchived = useCallback(async () => {
+    if (!token || !user) {
+      setArchivedEvents([]);
+      return;
+    }
+    setLoadingArchived(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/events/archived?role=host`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        console.error('Failed to load archived events', await res.text());
+        return;
+      }
+      const data = await res.json();
+      // Basic shape adaptation
+      const mapped: Event[] = data.map((e: any) => ({
+        id: e.id,
+        title: e.title,
+        description: null,
+        host_type: 'house',
+        location_lat: 0,
+        location_lng: 0,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        tags: [],
+        theme: null,
+        music_type: null,
+        cover_charge: null,
+        is_byob: false,
+        is_active: false,
+        created_by: user.user_id,
+        created_at: e.start_time,
+        is_archived: true,
+        archived_at: e.archived_at || null
+      }));
+      setArchivedEvents(mapped);
+    } catch (err) {
+      console.error('Error fetching archived events', err);
+    } finally {
+      setLoadingArchived(false);
+    }
+  }, [token, user]);
 
   useEffect(() => {
     fetchEvents();
@@ -404,8 +453,23 @@ function AppContent() {
                     m: 2
                   }}
                 >
+                  <Box sx={{ position: 'absolute', zIndex: 10, m: 1, display: 'flex', gap: 1 }}>
+                    <Button size="small" variant={showArchived ? 'outlined' : 'contained'} onClick={() => {
+                      if (!showArchived) {
+                        fetchArchived();
+                      }
+                      setShowArchived((prev) => !prev);
+                    }}>
+                      {showArchived ? 'Show Live Events' : 'Show My Archived'}
+                    </Button>
+                    {showArchived && (
+                      <Button size="small" disabled={loadingArchived} onClick={fetchArchived} variant="outlined">
+                        {loadingArchived ? 'Refreshing…' : 'Refresh Archived'}
+                      </Button>
+                    )}
+                  </Box>
                   <Map
-                    events={events}
+                    events={showArchived ? archivedEvents : events}
                     favoriteIds={favoriteIds}
                     checkedInIds={checkedInIds}
                     onToggleFavorite={handleToggleFavorite}

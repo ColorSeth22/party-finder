@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 
 function createPool() {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL ?? '';
   if (!url) {
     // Return a tiny facade that throws a useful error when used
     return {

@@ -2,15 +2,19 @@
 // Applies api/db/schema.sql (preferred) or api/db/migration.sql
 // Usage: node scripts/migrate.js
 
-const fs = require('fs');
-const path = require('path');
-const { Client } = require('pg');
+import { existsSync, readFileSync } from 'fs';
+import { join, relative } from 'path';
+import { fileURLToPath } from 'url';
+import { Client } from 'pg';
+
+// ESM __dirname polyfill
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 // Load .env if present (simple parser to avoid extra deps)
 try {
-  const envPath = path.join(__dirname, '..', '.env');
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, 'utf8');
+  const envPath = join(__dirname, '..', '.env');
+  if (existsSync(envPath)) {
+    const content = readFileSync(envPath, 'utf8');
     for (const line of content.split(/\r?\n/)) {
       if (!line || line.trim().startsWith('#')) continue;
       const idx = line.indexOf('=');
@@ -36,13 +40,13 @@ async function run() {
 
   // Prefer schema.sql, fall back to migration.sql
   const candidates = [
-    path.join(__dirname, '..', 'api', 'db', 'schema.sql'),
-    path.join(__dirname, '..', 'api', 'db', 'migration.sql')
+    join(__dirname, '..', 'api', 'db', 'schema.sql'),
+    join(__dirname, '..', 'api', 'db', 'migration.sql')
   ];
 
   let sqlPath = null;
   for (const p of candidates) {
-    if (fs.existsSync(p)) {
+    if (existsSync(p)) {
       sqlPath = p;
       break;
     }
@@ -53,8 +57,8 @@ async function run() {
     process.exit(1);
   }
 
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  console.log(`Applying SQL from ${path.relative(process.cwd(), sqlPath)}...`);
+  const sql = readFileSync(sqlPath, 'utf8');
+  console.log(`Applying SQL from ${relative(process.cwd(), sqlPath)}...`);
 
   const client = new Client({ connectionString: url, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false });
   await client.connect();

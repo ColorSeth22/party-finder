@@ -65,10 +65,28 @@ CREATE TABLE IF NOT EXISTS Events (
     cover_charge TEXT,
     is_byob BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    -- Archival support (added if missing via block below)
+    is_archived BOOLEAN DEFAULT FALSE,
+    archived_at TIMESTAMP WITH TIME ZONE,
     created_by UUID REFERENCES Users(user_id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Backfill archival columns if Events existed prior to addition
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='is_archived'
+    ) THEN
+        ALTER TABLE Events ADD COLUMN is_archived BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='archived_at'
+    ) THEN
+        ALTER TABLE Events ADD COLUMN archived_at TIMESTAMP WITH TIME ZONE;
+    END IF;
+END;$$;
 
 -- Activity tracking table (still used for future gamification)
 CREATE TABLE IF NOT EXISTS UserActivities (
@@ -146,6 +164,7 @@ CREATE TABLE IF NOT EXISTS Favorites (
 
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_events_active ON Events(is_active);
+CREATE INDEX IF NOT EXISTS idx_events_archived ON Events(is_archived);
 CREATE INDEX IF NOT EXISTS idx_events_host_type ON Events(host_type);
 CREATE INDEX IF NOT EXISTS idx_events_start_time ON Events(start_time);
 CREATE INDEX IF NOT EXISTS idx_checkins_event ON CheckIns(event_id);
@@ -155,3 +174,52 @@ CREATE INDEX IF NOT EXISTS idx_favorites_event ON Favorites(event_id);
 CREATE INDEX IF NOT EXISTS idx_user_activities_user ON UserActivities(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_activities_event ON UserActivities(event_id);
 CREATE INDEX IF NOT EXISTS idx_user_activities_created_at ON UserActivities(created_at);
+
+CREATE TABLE IF NOT EXISTS EventMedia (
+    media_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL REFERENCES Events(event_id) ON DELETE CASCADE,
+    user_id UUID REFERENCES Users(user_id) ON DELETE SET NULL,
+    media_type TEXT NOT NULL CHECK (media_type IN ('image','video')),
+    media_data BYTEA,          -- Binary data stored in DB (nullable for backward compat)
+    mime_type TEXT,            -- e.g., 'image/jpeg', 'video/mp4'
+    file_size INTEGER,         -- Size in bytes
+    caption TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Ensure binary columns exist for older databases and drop legacy URL column
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'eventmedia' AND column_name = 'media_data'
+    ) THEN
+        ALTER TABLE EventMedia ADD COLUMN media_data BYTEA;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'eventmedia' AND column_name = 'mime_type'
+    ) THEN
+        ALTER TABLE EventMedia ADD COLUMN mime_type TEXT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'eventmedia' AND column_name = 'file_size'
+    ) THEN
+        ALTER TABLE EventMedia ADD COLUMN file_size INTEGER;
+    END IF;
+
+    -- Drop legacy media_url column if present
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'eventmedia' AND column_name = 'media_url'
+    ) THEN
+        ALTER TABLE EventMedia DROP COLUMN media_url;
+    END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS idx_event_media_event ON EventMedia(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_media_user ON EventMedia(user_id);
+CREATE INDEX IF NOT EXISTS idx_event_media_created ON EventMedia(created_at);

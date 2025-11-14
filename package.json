@@ -2,7 +2,7 @@
   "name": "party-finder",
   "private": true,
   "version": "0.0.0",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "start:server": "node server/index.js",
@@ -21,6 +21,8 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "morgan": "^1.10.0",
+    "dotenv": "^16.4.5",
     "jsonwebtoken": "^9.0.2",
     "leaflet": "^1.9.4",
     "pg": "^8.16.3",
@@ -28,6 +30,7 @@
     "react-dom": "^19.1.1",
     "react-icons": "^5.5.0",
     "react-leaflet": "^5.0.0"
+    ,"multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
